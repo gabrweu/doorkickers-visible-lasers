@@ -3,8 +3,9 @@ The per-trooper laser toggles for the right-click (waypoint) menu, #waypoint_men
 the visible laser, one for the IR (night-vision) laser. A separate file, so waypoints.xml stays other mods'. When the
 menu opens and the "Per-trooper lasers" setting is on, the plugin moves these items into #waypoint_menu on the arc the
 stock toggles make around the portrait (go silent -65 -90, always wait 0 -90, speed sync 65 -90): the visible one at
-105 -35, the IR one at -105 -35 (night maps only). It shows the Button for that trooper's state. Unlike the stock
-toggles they leave the menu open. The Callback actions do nothing without the plugin.
+105 -35, the IR one at -105 -35 (night maps only). It shows the Button for that trooper's state, or the greyed _none
+Button (no click) when the trooper's gun has no laser. Unlike the stock toggles they leave the menu open. The Callback
+actions do nothing without the plugin.
 -->
 <GUIItems>
 	<Item name="#dk2ml_vlasers_unit" hidden="true">
@@ -28,6 +29,9 @@ toggles they leave the menu open. The Callback actions do nothing without the pl
 				<Action type="Callback" target="#dk2ml_vlasers_unit"/>
 			</OnClick>
 		</Button>
+		<Button name="#dk2ml_vlasers_unit_none" hidden="true" tooltip="Visible laser: this trooper's gun has none">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_none.dds"/>
+		</Button>
 	</Item>
 	<Item name="#dk2ml_vlasers_unit_ir" hidden="true">
 		<Button name="#dk2ml_vlasers_unit_ir_off" tooltip="IR laser: off. Click to turn it on for this trooper">
@@ -49,6 +53,9 @@ toggles they leave the menu open. The Callback actions do nothing without the pl
 				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_on_hover.dds" scaleX="0.9" scaleY="0.9"/>
 				<Action type="Callback" target="#dk2ml_vlasers_unit_ir"/>
 			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_unit_ir_none" hidden="true" tooltip="IR laser: this trooper's gun has none">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_none.dds"/>
 		</Button>
 	</Item>
 </GUIItems>

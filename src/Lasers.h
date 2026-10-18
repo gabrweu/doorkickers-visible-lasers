@@ -66,20 +66,28 @@ bool Lasers_Init(const DK2ML_API* api);
 // --- lasers/Units.cpp: per-trooper on/off per kind, for the current mission ---
 bool Units_LaserOn(void* human, bool ir); // always true while perUnitLasers is off
 bool Units_LaserOnId(uint32_t id, bool ir);
+void* Units_Human(uint32_t id); // the Human_Client with that entity id, or null
 void Units_Toggle(uint32_t id, bool ir);
 void Units_ToggleSelected(); // the kind in view
 void Units_ToggleAll();      // the kind in view, every trooper the local player commands
 void Units_Clear();          // mission start
 
-// --- lasers/Guns.cpp: laser position per gun name; others use the settings' ---
+// --- lasers/Guns.cpp: laser position per gun name, others use the settings'; a laser added to or removed from a gun ---
 struct GunOffset {
     float heightCm, backCm, sideCm;
 };
 
 using GunTable = std::map<std::string, GunOffset, std::less<>>;
+using GunLaserTable = std::map<std::string, bool, std::less<>>;
 
 const char* Guns_Name(void* human); // equipped gun's name, or null
-bool Guns_HasLaser(void* human);
+bool Guns_IsFirearm(void* human);
+bool Guns_StockLaser(void* human); // the game's hasLaser
+bool Guns_HasLaser(void* human); // with this gun's override
+const bool* Guns_LaserOverride(void* item); // an Equipment_Template's override, or null
+void Guns_SetLaser(std::string_view name, bool on);
+void Guns_RemoveLaser(std::string_view name);
+const GunLaserTable& Guns_Lasers();
 GunOffset Guns_Offset(void* human);
 GunOffset* Guns_Find(std::string_view name);
 void Guns_Set(std::string_view name, GunOffset offset);
@@ -94,4 +102,4 @@ void MenuButton_Register(const DK2ML_API* api);
 void Window_Toggle();
 bool Window_IsRebinding();
 bool Window_WantsInput(); // keep the game's input while ImGui uses it
-void Window_Draw();       // every frame; saves changes once they settle
+void Window_Draw(); // every frame; saves changes once they settle

@@ -39,20 +39,31 @@ bool Commandable(void* gameClient, void* human)
            game::Human_Client_m_isControlable(human) && game::Entity_Common_m_health(human) > 0;
 }
 
-// Human_Client::typeList is intrusive: the walk starts at the list's next and ends at null or the sentinel.
-int OwnTroopers(void* gameClient, void** out, int max)
+// Human_Client::typeList is intrusive: the walk starts at the list's next and ends at null or the sentinel. Stops
+// early when visit returns false.
+template <typename Visit> void EachHuman(Visit visit)
 {
     void* list = game::Human_Client_typeList.Address();
     void* sentinel = game::LinkedList_Human_head(list);
     void* node = game::LinkedList_Human_next(list);
-    int count = 0;
-    for (int i = 0; node && node != sentinel && i < kMaxNodes && count < max; ++i) {
+    for (int i = 0; node && node != sentinel && i < kMaxNodes; ++i) {
         void* human = game::LinkedList_Human_owner(node);
         node = game::LinkedList_Human_next(node);
-        if (human && Commandable(gameClient, human)) {
-            out[count++] = human;
+        if (human && !visit(human)) {
+            return;
         }
     }
+}
+
+int OwnTroopers(void* gameClient, void** out, int max)
+{
+    int count = 0;
+    EachHuman([&](void* human) {
+        if (Commandable(gameClient, human)) {
+            out[count++] = human;
+        }
+        return count < max;
+    });
     return count;
 }
 
@@ -66,6 +77,18 @@ bool Units_LaserOn(void* human, bool ir)
 bool Units_LaserOnId(uint32_t id, bool ir)
 {
     return g_startOn[ir] != (g_flipped[ir].count(id) != 0);
+}
+
+void* Units_Human(uint32_t id)
+{
+    void* found = nullptr;
+    EachHuman([&](void* human) {
+        if (game::Entity_Common_m_id(human) == id) {
+            found = human;
+        }
+        return !found;
+    });
+    return found;
 }
 
 void Units_Toggle(uint32_t id, bool ir)

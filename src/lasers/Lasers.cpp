@@ -1,5 +1,6 @@
 // The game creates and shows a trooper's laser only at night with NVG on. Both hooks fake those two flags for the
 // length of the call, then the post styles and moves whatever laser the game showed. The game redoes it every frame.
+// A gun's laser override (Guns.cpp) is swapped into its shared template's hasLaser the same way.
 #include <algorithm>
 #include <cmath>
 
@@ -153,10 +154,21 @@ void InitPost(DK2ML_Regs* regs, void*)
 }
 
 // Each view shows only its own kind: fake night + NVG to show a visible laser, clear NVG to hide an IR one.
+// scratch[1]: the gun template whose hasLaser was swapped, scratch[3]: its own value.
 int UpdatePre(DK2ML_Regs* regs, void*)
 {
     regs->scratch[0] = reinterpret_cast<uint64_t>(dk2ml::Arg<void*>(regs, 0));
+    regs->scratch[1] = 0;
     regs->scratch[2] = 0;
+
+    void* human = reinterpret_cast<void*>(regs->scratch[0]);
+    void* item = game::Human_Client_m_pEquippedItem(human);
+    const bool* own = Guns_LaserOverride(item);
+    if (own && *own != game::EqpFirearm_Template_hasLaser(item)) {
+        regs->scratch[1] = reinterpret_cast<uint64_t>(item);
+        regs->scratch[3] = game::EqpFirearm_Template_hasLaser(item);
+        game::EqpFirearm_Template_hasLaser(item) = *own;
+    }
 
     bool* night = game::NightFlag();
     bool* nvg = game::NvgFlag();
@@ -164,7 +176,6 @@ int UpdatePre(DK2ML_Regs* regs, void*)
         return DK2ML_CALL_ORIGINAL;
     }
 
-    void* human = reinterpret_cast<void*>(regs->scratch[0]);
     bool irView = game::NvgView();
     bool on = (irView ? g_settings.nvg.on : g_settings.visible.on) && Units_LaserOn(human, irView);
     uint64_t state = (*night ? kWasNight : 0) | (*nvg ? kWasNvg : 0) | (on ? kOn : 0);
@@ -182,6 +193,10 @@ int UpdatePre(DK2ML_Regs* regs, void*)
 
 void UpdatePost(DK2ML_Regs* regs, void*)
 {
+    if (void* item = reinterpret_cast<void*>(regs->scratch[1])) {
+        game::EqpFirearm_Template_hasLaser(item) = regs->scratch[3] != 0;
+    }
+
     uint64_t state = regs->scratch[2];
     bool* night = game::NightFlag();
     bool* nvg = game::NvgFlag();

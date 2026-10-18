@@ -67,6 +67,16 @@ bool Button(const char* label)
     return imgui::ButtonEx(label, imgui::ImVec2{0, 0}, 0);
 }
 
+// ImGui's SmallButton, rebuilt: the game's one ignores its label.
+bool SmallButton(const char* label)
+{
+    imgui::PushStyleVarVec2(static_cast<int>(imgui::ImGuiStyleVar_FramePadding.Get()), {8.0f, 0.0f});
+    bool pressed =
+        imgui::ButtonEx(label, imgui::ImVec2{0, 0}, static_cast<int>(imgui::ImGuiButtonFlags_AlignTextBaseLine.Get()));
+    imgui::PopStyleVar(1);
+    return pressed;
+}
+
 // Ctrl+click can type a value out of range.
 bool Slider(const char* label, float* value, Range range, const char* format)
 {
@@ -79,6 +89,47 @@ bool Slider(const char* label, float* value, Range range, const char* format)
 void Separator()
 {
     imgui::SeparatorEx(static_cast<int>(imgui::ImGuiSeparatorFlags_Horizontal.Get()));
+}
+
+constexpr imgui::ImVec4 kAccent{0.97f, 0.63f, 0.0f, 1.0f}; // the right-click toggles' "on" amber
+constexpr float kIndent = 10.0f;
+constexpr int kStyleVars = 7; // pushed by PushStyle
+
+int StyleVar(const dk2ml::Enum& var)
+{
+    return static_cast<int>(var.Get());
+}
+
+// From before Begin (it reads WindowPadding) to after End, so other windows keep their style.
+void PushStyle()
+{
+    imgui::PushStyleVarVec2(StyleVar(imgui::ImGuiStyleVar_WindowPadding), {14.0f, 12.0f});
+    imgui::PushStyleVarVec2(StyleVar(imgui::ImGuiStyleVar_FramePadding), {8.0f, 4.0f});
+    imgui::PushStyleVarVec2(StyleVar(imgui::ImGuiStyleVar_ItemSpacing), {8.0f, 5.0f});
+    imgui::PushStyleVarVec2(StyleVar(imgui::ImGuiStyleVar_ItemInnerSpacing), {6.0f, 4.0f});
+    imgui::PushStyleVarFloat(StyleVar(imgui::ImGuiStyleVar_WindowRounding), 6.0f);
+    imgui::PushStyleVarFloat(StyleVar(imgui::ImGuiStyleVar_FrameRounding), 4.0f);
+    imgui::PushStyleVarFloat(StyleVar(imgui::ImGuiStyleVar_GrabRounding), 4.0f);
+}
+
+void PopStyle()
+{
+    imgui::PopStyleVar(kStyleVars);
+}
+
+// A titled block: spaced off the one above, its content indented until EndSection.
+void BeginSection(const char* title)
+{
+    imgui::Spacing();
+    Separator();
+    imgui::Spacing();
+    imgui::TextColored(kAccent, "%s", title);
+    imgui::Indent(kIndent);
+}
+
+void EndSection()
+{
+    imgui::Unindent(kIndent);
 }
 
 int GenericModifier(int vk)
@@ -131,6 +182,7 @@ void KeyRow(const char* label, int* slot)
         return;
     }
 
+    imgui::AlignTextToFramePadding(); // level with the button
     imgui::Text("%s: %s", label, KeyName(*slot).c_str());
     imgui::SameLine(0.0f, -1.0f);
     char button[96];
@@ -162,17 +214,19 @@ bool DrawStyle(const char* title, const char* onLabel, const char* id, LaserStyl
 {
     bool changed = false;
     char label[96];
-    imgui::Text("%s", title);
+    BeginSection(title);
 
     sprintf_s(label, "%s##%s", onLabel, id);
     changed |= imgui::Checkbox(label, &style.on);
+    imgui::SameLine(0.0f, 24.0f);
     if (atStart) {
         sprintf_s(label, "On at mission start##%s", id);
         changed |= imgui::Checkbox(label, atStart);
     } else {
-        imgui::TextDisabled("  on at every mission start");
+        imgui::TextDisabled("(on at every mission start)");
     }
 
+    imgui::Spacing();
     sprintf_s(label, "Color##%s", id);
     changed |= imgui::Combo(label, &style.color, PresetName, nullptr, kColorPresetCount, -1);
     if (style.color == kCustomColor) {
@@ -186,6 +240,7 @@ bool DrawStyle(const char* title, const char* onLabel, const char* id, LaserStyl
         }
     }
 
+    imgui::Spacing();
     sprintf_s(label, "Beam thickness##%s", id);
     changed |= Slider(label, &style.thickness, kThicknessRange, "%.2fx");
     sprintf_s(label, "Beam strength##%s", id);
@@ -194,6 +249,7 @@ bool DrawStyle(const char* title, const char* onLabel, const char* id, LaserStyl
     changed |= Slider(label, &style.dotBrightness, kDotRange, "%.2fx");
     sprintf_s(label, "Dot size##%s", id);
     changed |= Slider(label, &style.dotSize, kDotSizeRange, "%.2fx");
+    EndSection();
     return changed;
 }
 
@@ -228,51 +284,64 @@ bool DrawSettings()
     }
 
     imgui::TextDisabled("era's Lasers Enhanced version %s, built %s", PLUGIN_VERSION, PLUGIN_BUILD_TIME);
-    Separator();
+
+    BeginSection("Controls");
     changed |= imgui::Checkbox("Per-trooper lasers (button in the right-click menu)", &s.perUnitLasers);
     KeyRow("Toggle lasers", &s.toggleKey);
-    imgui::TextDisabled(s.perUnitLasers ? "  the selected trooper's, Shift + key: the team's; the kind in view"
-                                        : "  the kind in view: IR with NVG on, visible with it off");
+    EndSection();
 
-    Separator();
-    imgui::Text("Laser position (guns without their own, on the right)");
+    BeginSection("Laser Position (for guns without override)");
     changed |= Slider("Height above barrel", &s.heightCm, kHeightRange, "%.1f cm");
     changed |= Slider("Start behind muzzle", &s.backCm, kBackRange, "%.1f cm");
     changed |= Slider("Left / right of barrel", &s.sideCm, kSideRange, "%.1f cm");
-    imgui::TextDisabled("  right is positive, left negative");
+    imgui::TextDisabled("right is positive, left negative");
+    EndSection();
 
-    Separator();
-    changed |= DrawStyle("Visible lasers (without night vision)", "Show visible lasers", "visible", s.visible,
-                         &s.visibleAtStart);
+    changed |=
+        DrawStyle("Visible lasers (without night vision)", "Active right now", "visible", s.visible, &s.visibleAtStart);
+    changed |= DrawStyle("IR lasers (with night vision)", "Active right now", "nvg", s.nvg);
 
+    imgui::Spacing();
     Separator();
-    changed |= DrawStyle("IR lasers (with night vision)", "Show IR lasers", "nvg", s.nvg);
-
-    Separator();
-    changed |= DrawResetButton();
+    imgui::Spacing();
+    changed |= DrawResetButton(); // Close follows on its line
     return changed;
 }
 
 bool DrawGunPanel()
 {
     bool changed = false;
-    imgui::TextDisabled("The selected trooper's gun. Other guns use the position on the left");
+    imgui::TextDisabled("Override position for specific guns. Select a trooper to edit.");
 
     void* input = *game::g_pGameInput;
     void* human = input ? game::GameInput_GetSelectedHuman(input) : nullptr;
     const char* name = human ? Guns_Name(human) : nullptr;
+    BeginSection("Selected gun");
     if (!human) {
-        imgui::Text("Select a trooper first");
+        imgui::TextDisabled("No trooper selected");
     } else if (!name) {
-        imgui::Text("The selected trooper holds no gun");
+        imgui::TextDisabled("The selected trooper holds no gun");
     } else {
         imgui::Text("Gun: %s", name);
-        if (!Guns_HasLaser(human)) {
-            imgui::TextDisabled("  this gun has no laser");
+        if (Guns_IsFirearm(human)) {
+            bool stock = Guns_StockLaser(human);
+            bool laser = Guns_HasLaser(human);
+            if (imgui::Checkbox("Laser capable##gunlaser", &laser)) {
+                if (laser == stock) {
+                    Guns_RemoveLaser(name);
+                } else {
+                    Guns_SetLaser(name, laser);
+                }
+                changed = true;
+            }
+            imgui::SameLine(0.0f, -1.0f);
+            imgui::TextDisabled(stock ? "(the game gives it one)" : "(the game DOESN'T give it)");
+        } else {
+            imgui::TextDisabled("Not a firearm: no laser");
         }
 
         bool own = Guns_Find(name) != nullptr;
-        if (imgui::Checkbox("Own position for this gun##gun", &own)) {
+        if (imgui::Checkbox("Gun specific position##gun", &own)) {
             if (own) {
                 Guns_Set(name, {g_settings.heightCm, g_settings.backCm, g_settings.sideCm});
             } else {
@@ -281,16 +350,18 @@ bool DrawGunPanel()
             changed = true;
         }
         if (GunOffset* offset = Guns_Find(name)) {
+            imgui::Indent(kIndent);
             changed |= Slider("Height above barrel##gun", &offset->heightCm, kHeightRange, "%.1f cm");
             changed |= Slider("Start behind muzzle##gun", &offset->backCm, kBackRange, "%.1f cm");
             changed |= Slider("Left / right of barrel##gun", &offset->sideCm, kSideRange, "%.1f cm");
+            imgui::Unindent(kIndent);
         }
     }
+    EndSection();
 
-    Separator();
-    imgui::Text("Guns with their own position");
+    BeginSection("Customized guns (position)");
     if (Guns_All().empty()) {
-        imgui::TextDisabled("  none yet");
+        imgui::TextDisabled("none yet");
     }
     std::string removed;
     for (const auto& [gun, offset] : Guns_All()) {
@@ -302,7 +373,7 @@ bool DrawGunPanel()
         }
         imgui::SameLine(0.0f, -1.0f);
         std::string button = "Remove##" + gun;
-        if (Button(button.c_str())) {
+        if (SmallButton(button.c_str())) {
             removed = gun;
         }
     }
@@ -310,6 +381,26 @@ bool DrawGunPanel()
         Guns_Remove(removed);
         changed = true;
     }
+    EndSection();
+
+    BeginSection("Customized guns (laser capability override)");
+    if (Guns_Lasers().empty()) {
+        imgui::TextDisabled("none yet");
+    }
+    removed.clear();
+    for (const auto& [gun, on] : Guns_Lasers()) {
+        imgui::Text("%s: laser %s", gun.c_str(), on ? "added" : "removed");
+        imgui::SameLine(0.0f, -1.0f);
+        std::string button = "Remove##laser" + gun;
+        if (SmallButton(button.c_str())) {
+            removed = gun;
+        }
+    }
+    if (!removed.empty()) {
+        Guns_RemoveLaser(removed);
+        changed = true;
+    }
+    EndSection();
     return changed;
 }
 
@@ -333,7 +424,8 @@ bool DrawGunWindow(imgui::ImVec2 pos)
         static_cast<int>(imgui::ImGuiWindowFlags_NoCollapse.Get() | imgui::ImGuiWindowFlags_AlwaysAutoResize.Get() |
                          imgui::ImGuiWindowFlags_NoMove.Get() | imgui::ImGuiWindowFlags_NoSavedSettings.Get());
     bool changed = false;
-    if (imgui::Begin("Laser position per gun##dk2ml_vlasers_guns", nullptr, flags)) {
+    PushStyle();
+    if (imgui::Begin("Gun specific configuration##dk2ml_vlasers_guns", nullptr, flags)) {
         changed = DrawGunPanel();
     }
     g_gunWindow = imgui::ImGuiContext_CurrentWindow(context);
@@ -342,6 +434,7 @@ bool DrawGunWindow(imgui::ImVec2 pos)
         imgui::ImGuiWindow_Pos(g_gunWindow) = pos;
     }
     imgui::End();
+    PopStyle();
     return changed;
 }
 
@@ -401,8 +494,10 @@ void Window_Draw()
     if (open) {
         int flags =
             static_cast<int>(imgui::ImGuiWindowFlags_NoCollapse.Get() | imgui::ImGuiWindowFlags_AlwaysAutoResize.Get());
+        PushStyle();
         if (imgui::Begin("era's Lasers Enhanced##dk2ml_vlasers", &open, flags)) {
             changed = DrawSettings();
+            imgui::SameLine(0.0f, -1.0f);
             if (Button("Close")) {
                 open = false;
             }
@@ -410,6 +505,7 @@ void Window_Draw()
         imgui::ImVec2 gunWindowPos{};
         bool besideIt = RightOfCurrentWindow(&gunWindowPos);
         imgui::End();
+        PopStyle();
         if (open && besideIt) {
             changed |= DrawGunWindow(gunWindowPos);
         }

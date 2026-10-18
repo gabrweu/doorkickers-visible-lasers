@@ -96,6 +96,14 @@ dk2ml::Fn<void(float, float)> SameLine{"ImGui::SameLine"};
 dk2ml::Fn<bool(const char*, int*, bool (*)(void*, int, const char**), void*, int, int)> Combo{
     "?Combo@ImGui@@YA_NPEBDPEAHP6A_NPEAXHPEAPEBD@Z2HH@Z"};
 dk2ml::Fn<bool(const char*, float*, int)> ColorEdit4{"ImGui::ColorEdit4"};
+dk2ml::Fn<void()> Spacing{"ImGui::Spacing"};
+dk2ml::Fn<void(float)> Indent{"ImGui::Indent"};
+dk2ml::Fn<void(float)> Unindent{"ImGui::Unindent"};
+dk2ml::Fn<void()> AlignTextToFramePadding{"ImGui::AlignTextToFramePadding"};
+dk2ml::Fn<void(const ImVec4&, const char*, ...)> TextColored{"ImGui::TextColored"};
+dk2ml::Fn<void(int, float)> PushStyleVarFloat{"?PushStyleVar@ImGui@@YAXHM@Z"};
+dk2ml::Fn<void(int, const ImVec2&)> PushStyleVarVec2{"?PushStyleVar@ImGui@@YAXHAEBUImVec2@@@Z"};
+dk2ml::Fn<void(int)> PopStyleVar{"ImGui::PopStyleVar"};
 
 dk2ml::Global<void*> GImGui{"GImGui"};
 dk2ml::Field<void*> ImGuiContext_CurrentWindow{"ImGuiContext", "CurrentWindow"};
@@ -112,6 +120,14 @@ dk2ml::Enum ImGuiWindowFlags_NoMove{"ImGuiWindowFlags_", "ImGuiWindowFlags_NoMov
 dk2ml::Enum ImGuiWindowFlags_NoSavedSettings{"ImGuiWindowFlags_", "ImGuiWindowFlags_NoSavedSettings"};
 dk2ml::Enum ImGuiSeparatorFlags_Horizontal{"ImGuiSeparatorFlags_", "ImGuiSeparatorFlags_Horizontal"};
 dk2ml::Enum ImGuiColorEditFlags_NoAlpha{"ImGuiColorEditFlags_", "ImGuiColorEditFlags_NoAlpha"};
+dk2ml::Enum ImGuiStyleVar_WindowPadding{"ImGuiStyleVar_", "ImGuiStyleVar_WindowPadding"};
+dk2ml::Enum ImGuiStyleVar_WindowRounding{"ImGuiStyleVar_", "ImGuiStyleVar_WindowRounding"};
+dk2ml::Enum ImGuiStyleVar_FramePadding{"ImGuiStyleVar_", "ImGuiStyleVar_FramePadding"};
+dk2ml::Enum ImGuiStyleVar_FrameRounding{"ImGuiStyleVar_", "ImGuiStyleVar_FrameRounding"};
+dk2ml::Enum ImGuiStyleVar_ItemSpacing{"ImGuiStyleVar_", "ImGuiStyleVar_ItemSpacing"};
+dk2ml::Enum ImGuiStyleVar_ItemInnerSpacing{"ImGuiStyleVar_", "ImGuiStyleVar_ItemInnerSpacing"};
+dk2ml::Enum ImGuiStyleVar_GrabRounding{"ImGuiStyleVar_", "ImGuiStyleVar_GrabRounding"};
+dk2ml::Enum ImGuiButtonFlags_AlignTextBaseLine{"ImGuiButtonFlagsPrivate_", "ImGuiButtonFlags_AlignTextBaseLine"};
 
 } // namespace imgui
 

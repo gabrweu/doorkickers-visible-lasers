@@ -12,6 +12,9 @@ $menuOffGlyph = [Drawing.Color]::FromArgb(0x20, 0x18, 0x18)
 $menuOn = [Drawing.Color]::FromArgb(0xf8, 0xa0, 0x00)
 $menuOnGlyph = [Drawing.Color]::FromArgb(0xa0, 0x38, 0x00)
 $menuHoverRim = [Drawing.Color]::FromArgb(0xf8, 0xc0, 0x00)
+# greyed: the trooper's gun has no laser
+$menuNone = [Drawing.Color]::FromArgb(0x80, 0x80, 0x80)
+$menuNoneGlyph = [Drawing.Color]::FromArgb(0x40, 0x40, 0x40)
 $scale = 4 # drawn at 4x and scaled down, for smooth edges like the stock textures
 $outDir = Join-Path $PSScriptRoot '..\mod\textures\hud'
 
@@ -83,8 +86,9 @@ function Glyph-Label($g, $cx, $cy, $color, $text) {
 }
 
 # A per-trooper toggle: a rounded diamond, orange with a dark glyph when off, amber with a brown glyph when on, a
-# yellow rim on hover, like the menu's stock toggles. The laser sits above a label naming the kind.
-function Draw-UnitToggle([string]$label, [bool]$on, [bool]$hover) {
+# yellow rim on hover, like the menu's stock toggles. The laser sits above a label naming the kind. $none draws it
+# grey with the off glyph, for a gun without a laser.
+function Draw-UnitToggle([string]$label, [bool]$on, [bool]$hover, [bool]$none = $false) {
     $canvas = New-Canvas $unitSize $unitSize
     $g = $canvas.Graphics
     $c = $unitSize / 2
@@ -103,13 +107,13 @@ function Draw-UnitToggle([string]$label, [bool]$on, [bool]$hover) {
     $turn.Rotate(45)
     $diamond.Transform($turn)
 
-    $fill = if ($on) { $menuOn } else { $menuOff }
+    $fill = if ($none) { $menuNone } elseif ($on) { $menuOn } else { $menuOff }
     $g.FillPath((New-Object Drawing.SolidBrush $fill), $diamond)
     if ($hover) {
         $g.DrawPath((New-Object Drawing.Pen $menuHoverRim, (Px $unitRim)), $diamond)
     }
 
-    $glyph = if ($on) { $menuOnGlyph } else { $menuOffGlyph }
+    $glyph = if ($none) { $menuNoneGlyph } elseif ($on) { $menuOnGlyph } else { $menuOffGlyph }
     Glyph-Laser $g $c ($c - 6) $glyph $on 0.6
     Glyph-Label $g $c ($c + 12) $glyph $label
     return Finish-Canvas $canvas
@@ -153,6 +157,8 @@ $images = [ordered]@{
     'dk2ml_vlasers_unit_ir_off_hover'  = Draw-UnitToggle 'IR' $false $true
     'dk2ml_vlasers_unit_ir_on_normal'  = Draw-UnitToggle 'IR' $true $false
     'dk2ml_vlasers_unit_ir_on_hover'   = Draw-UnitToggle 'IR' $true $true
+    'dk2ml_vlasers_unit_none'          = Draw-UnitToggle 'VIS' $false $false $true
+    'dk2ml_vlasers_unit_ir_none'       = Draw-UnitToggle 'IR' $false $false $true
 }
 
 New-Item -ItemType Directory -Force $outDir | Out-Null

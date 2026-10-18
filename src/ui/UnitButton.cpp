@@ -11,6 +11,7 @@ struct Toggle {
     const char* item;
     const char* offButton;
     const char* onButton;
+    const char* noneButton; // greyed, unbound: the gun has no laser
     float x, y;
     bool ir;
     void* wiredItem; // the item whose Buttons are bound
@@ -18,9 +19,10 @@ struct Toggle {
 
 // The next step on the stock toggles' arc, each side.
 Toggle g_toggles[] = {
-    {"#dk2ml_vlasers_unit", "#dk2ml_vlasers_unit_off", "#dk2ml_vlasers_unit_on", 105.0f, -35.0f, false, nullptr},
-    {"#dk2ml_vlasers_unit_ir", "#dk2ml_vlasers_unit_ir_off", "#dk2ml_vlasers_unit_ir_on", -105.0f, -35.0f, true,
-     nullptr},
+    {"#dk2ml_vlasers_unit", "#dk2ml_vlasers_unit_off", "#dk2ml_vlasers_unit_on", "#dk2ml_vlasers_unit_none", 105.0f,
+     -35.0f, false, nullptr},
+    {"#dk2ml_vlasers_unit_ir", "#dk2ml_vlasers_unit_ir_off", "#dk2ml_vlasers_unit_ir_on", "#dk2ml_vlasers_unit_ir_none",
+     -105.0f, -35.0f, true, nullptr},
 };
 
 uint32_t g_trooperId = 0; // whose menu is open
@@ -33,11 +35,15 @@ void ShowIfChanged(void* item, bool show)
     }
 }
 
+// A trooper that can't be found keeps the normal toggles.
 void Sync(const Toggle& toggle, void* item)
 {
+    void* human = Units_Human(g_trooperId);
+    bool hasLaser = !human || Guns_HasLaser(human);
     bool on = Units_LaserOnId(g_trooperId, toggle.ir);
-    ShowIfChanged(dk2ml::gui::Find(game::api, toggle.onButton, item), on);
-    ShowIfChanged(dk2ml::gui::Find(game::api, toggle.offButton, item), !on);
+    ShowIfChanged(dk2ml::gui::Find(game::api, toggle.noneButton, item), !hasLaser);
+    ShowIfChanged(dk2ml::gui::Find(game::api, toggle.onButton, item), hasLaser && on);
+    ShowIfChanged(dk2ml::gui::Find(game::api, toggle.offButton, item), hasLaser && !on);
 }
 
 void Clicked(void*, float, float, void* user)

@@ -144,6 +144,10 @@ struct ImVec2 {
     float x, y;
 };
 
+struct ImVec4 {
+    float x, y, z, w;
+};
+
 extern dk2ml::Fn<bool(const char* name, bool* open, int flags)> Begin;
 extern dk2ml::Fn<void()> End;
 extern dk2ml::Fn<bool(const char* label, bool* value)> Checkbox;
@@ -159,6 +163,16 @@ extern dk2ml::Fn<bool(const char* label, int* current, bool (*getter)(void* data
                       void* data, int count, int popupMaxHeightInItems)>
     Combo;
 extern dk2ml::Fn<bool(const char* label, float* rgba, int flags)> ColorEdit4;
+extern dk2ml::Fn<void()> Spacing;
+extern dk2ml::Fn<void(float width)> Indent; // 0: the style's IndentSpacing
+extern dk2ml::Fn<void(float width)> Unindent;
+extern dk2ml::Fn<void()> AlignTextToFramePadding;
+extern dk2ml::Fn<void(const ImVec4& color, const char* format, ...)> TextColored;
+// No PopStyleColor, PopItemWidth or EndDisabled: their pushes can't be undone, so they aren't bound. SmallButton
+// ignores its label (the game's one caller's " + Add  " is baked in): Window.cpp builds it from ButtonEx.
+extern dk2ml::Fn<void(int var, float value)> PushStyleVarFloat;
+extern dk2ml::Fn<void(int var, const ImVec2& value)> PushStyleVarVec2;
+extern dk2ml::Fn<void(int count)> PopStyleVar;
 
 // No SetNextWindowPos, GetWindowPos/Size or GetIO: read through the context.
 extern dk2ml::Global<void*> GImGui;
@@ -176,6 +190,14 @@ extern dk2ml::Enum ImGuiWindowFlags_NoMove;
 extern dk2ml::Enum ImGuiWindowFlags_NoSavedSettings;
 extern dk2ml::Enum ImGuiSeparatorFlags_Horizontal;
 extern dk2ml::Enum ImGuiColorEditFlags_NoAlpha;
+extern dk2ml::Enum ImGuiStyleVar_WindowPadding;
+extern dk2ml::Enum ImGuiStyleVar_WindowRounding;
+extern dk2ml::Enum ImGuiStyleVar_FramePadding;
+extern dk2ml::Enum ImGuiStyleVar_FrameRounding;
+extern dk2ml::Enum ImGuiStyleVar_ItemSpacing;
+extern dk2ml::Enum ImGuiStyleVar_ItemInnerSpacing;
+extern dk2ml::Enum ImGuiStyleVar_GrabRounding;
+extern dk2ml::Enum ImGuiButtonFlags_AlignTextBaseLine;
 
 } // namespace imgui
 
