@@ -1,0 +1,26 @@
+# Run .\tools\format.ps1 (or -Check). Regions marked // clang-format off keep a deliberate layout.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  SplitEmptyFunction: false
+IndentCaseLabels: false
+InsertBraces: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+PointerAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+# Plugin.cpp includes windows.h before dk2ml.hpp.
+SortIncludes: Never
+ReflowComments: false
+AlignTrailingComments:
+  Kind: Leave
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false

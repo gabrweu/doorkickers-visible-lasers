@@ -1,0 +1,54 @@
+<!--
+The per-trooper laser toggles for the right-click (waypoint) menu, #waypoint_menu in the game's waypoints.xml: one for
+the visible laser, one for the IR (night-vision) laser. A separate file, so waypoints.xml stays other mods'. When the
+menu opens and the "Per-trooper lasers" setting is on, the plugin moves these items into #waypoint_menu on the arc the
+stock toggles make around the portrait (go silent -65 -90, always wait 0 -90, speed sync 65 -90): the visible one at
+105 -35, the IR one at -105 -35 (night maps only). It shows the Button for that trooper's state. Unlike the stock
+toggles they leave the menu open. The Callback actions do nothing without the plugin.
+-->
+<GUIItems>
+	<Item name="#dk2ml_vlasers_unit" hidden="true">
+		<Button name="#dk2ml_vlasers_unit_off" tooltip="Visible laser: off. Click to turn it on for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_off_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_off_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_off_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_unit"/>
+			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_unit_on" hidden="true" tooltip="Visible laser: on. Click to turn it off for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_on_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_on_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_on_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_unit"/>
+			</OnClick>
+		</Button>
+	</Item>
+	<Item name="#dk2ml_vlasers_unit_ir" hidden="true">
+		<Button name="#dk2ml_vlasers_unit_ir_off" tooltip="IR laser: off. Click to turn it on for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_off_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_off_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_off_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_unit_ir"/>
+			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_unit_ir_on" hidden="true" tooltip="IR laser: on. Click to turn it off for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_on_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_on_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_on_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_unit_ir"/>
+			</OnClick>
+		</Button>
+	</Item>
+</GUIItems>
