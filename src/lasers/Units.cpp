@@ -23,20 +23,29 @@ void SetKind(uint32_t id, bool ir, bool on)
     }
 }
 
-// The filter of the game's status keys: the local player's live, controllable squad members, not in a replay.
+bool Replaying(void* gameClient)
+{
+    return (game::GameClient_m_flags(gameClient) & static_cast<uint32_t>(game::CGAMEFLAG_REPLAYING.Get())) != 0;
+}
+
+// The game's status-key filter in play: the local player's live, controllable squad members. In a replay, any live
+// trooper.
 bool Commandable(void* gameClient, void* human)
 {
-    int clientIndex =
-        dk2ml::At<int>(gameClient, game::GameClient_m_server.Offset() + game::GameClient_Server_clientIndex.Offset());
-    if (clientIndex < 0 || clientIndex >= kMaxClients ||
-        (game::GameClient_m_flags(gameClient) & static_cast<uint32_t>(game::CGAMEFLAG_REPLAYING.Get())) != 0) {
+    void* tmpl = game::Entity_Common_m_pTemplate(human);
+    if (!tmpl || game::Human_Template_type(tmpl) != game::HUMAN_GOODGUY.Get() ||
+        game::Entity_Common_m_health(human) <= 0) {
         return false;
     }
+    if (Replaying(gameClient)) {
+        return true;
+    }
 
-    void* tmpl = game::Entity_Common_m_pTemplate(human);
-    return tmpl && game::Human_Template_type(tmpl) == game::HUMAN_GOODGUY.Get() &&
+    int clientIndex =
+        dk2ml::At<int>(gameClient, game::GameClient_m_server.Offset() + game::GameClient_Server_clientIndex.Offset());
+    return clientIndex >= 0 && clientIndex < kMaxClients &&
            (game::Human_Client_m_ownerMask(human) & (1u << clientIndex)) != 0 &&
-           game::Human_Client_m_isControlable(human) && game::Entity_Common_m_health(human) > 0;
+           game::Human_Client_m_isControlable(human);
 }
 
 // Human_Client::typeList is intrusive: the walk starts at the list's next and ends at null or the sentinel. Stops
@@ -65,6 +74,16 @@ int OwnTroopers(void* gameClient, void** out, int max)
         return count < max;
     });
     return count;
+}
+
+bool AnyOn(void* const* troopers, int count, bool ir)
+{
+    for (int i = 0; i < count; ++i) {
+        if (Units_LaserOnId(game::Entity_Common_m_id(troopers[i]), ir)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -120,13 +139,47 @@ void Units_ToggleAll()
     bool ir = game::NvgView();
     void* troopers[kMaxTroopers];
     int count = OwnTroopers(gameClient, troopers, kMaxTroopers);
-    bool anyOn = false;
-    for (int i = 0; i < count; ++i) {
-        anyOn |= Units_LaserOnId(game::Entity_Common_m_id(troopers[i]), ir);
-    }
+    bool anyOn = AnyOn(troopers, count, ir);
     for (int i = 0; i < count; ++i) {
         SetKind(game::Entity_Common_m_id(troopers[i]), ir, !anyOn);
     }
+}
+
+void Units_SetAll(bool ir, bool on)
+{
+    g_startOn[ir] = on;
+    g_flipped[ir].clear();
+}
+
+bool Units_AnyOn(bool ir)
+{
+    void* gameClient = *game::g_pGameClient;
+    if (!gameClient) {
+        return g_startOn[ir];
+    }
+
+    void* troopers[kMaxTroopers];
+    int count = OwnTroopers(gameClient, troopers, kMaxTroopers);
+    return count > 0 ? AnyOn(troopers, count, ir) : g_startOn[ir];
+}
+
+// Per-trooper mode keeps both global switches on; the troopers take over the global state, or hand theirs back.
+void Units_SetPerUnit(bool perUnit)
+{
+    if (g_settings.perUnitLasers == perUnit) {
+        return;
+    }
+
+    for (bool ir : {false, true}) {
+        LaserStyle& kind = ir ? g_settings.nvg : g_settings.visible;
+        if (perUnit) {
+            Units_SetAll(ir, kind.on);
+            kind.on = true;
+        } else {
+            kind.on = Units_AnyOn(ir);
+        }
+    }
+    g_settings.perUnitLasers = perUnit;
 }
 
 void Units_Clear()

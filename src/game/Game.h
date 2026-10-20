@@ -1,4 +1,5 @@
-// Game names, resolved by name from the PDB (dk2ml::ResolveAll in init).
+// Game names, resolved by name from the PDB (dk2ml::ResolveAll in init). Optional (missing: no right-click buttons,
+// the rest works): GameGUI_OpenWaypointMenu, ActionWP_Client_m_action, sActionWP_ownerId, EVENT_CLICK.
 #pragma once
 
 #include <cstdint>
@@ -21,6 +22,8 @@ struct Matrix3 {
 extern dk2ml::Fn<void(void* human)> Human_Client_Init; // creates the laser, only on night maps
 extern dk2ml::Fn<void(void* human)> Human_Client_UpdateLaserLight; // shows it, only on night maps with NVG on
 extern dk2ml::Fn<void(void* gui, const void* waypoint, int type)> GameGUI_OpenWaypointMenu;
+// picks the day-only / night-only gear models (NVG up or down) from the client's night flag; Init calls it
+extern dk2ml::Fn<void(void* human, const void* inventory)> Human_Client_SetInventory;
 
 // --- called ---
 extern dk2ml::Fn<void*(const void* input)> GameInput_GetSelectedHuman;
@@ -168,8 +171,7 @@ extern dk2ml::Fn<void(float width)> Indent; // 0: the style's IndentSpacing
 extern dk2ml::Fn<void(float width)> Unindent;
 extern dk2ml::Fn<void()> AlignTextToFramePadding;
 extern dk2ml::Fn<void(const ImVec4& color, const char* format, ...)> TextColored;
-// No PopStyleColor, PopItemWidth or EndDisabled: their pushes can't be undone, so they aren't bound. SmallButton
-// ignores its label (the game's one caller's " + Add  " is baked in): Window.cpp builds it from ButtonEx.
+// Only style vars can be popped (no PopStyleColor/PopItemWidth/EndDisabled).
 extern dk2ml::Fn<void(int var, float value)> PushStyleVarFloat;
 extern dk2ml::Fn<void(int var, const ImVec2& value)> PushStyleVarVec2;
 extern dk2ml::Fn<void(int count)> PopStyleVar;

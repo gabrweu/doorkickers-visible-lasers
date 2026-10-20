@@ -1,7 +1,4 @@
-# Builds Release and lays out the Workshop mod in dist\<name>\ (mod\ + native\<name>.dll), with the DLL's SHA-256 for
-# release notes in dist\<name>.sha256.txt. The Workshop page text is mod\mod.xml's description. To publish, run
-# install.ps1 (the same layout in %LOCALAPPDATA%\KillHouseGames\DoorKickers2\mods_upload\<name>) and upload that from
-# the game's Mods menu. After the first upload, copy the ugcId the game wrote into that mod.xml to mod\mod.xml.
+# Builds Release into dist\<name>\ (mod\ + native\<name>.dll) and writes the DLL's SHA-256 to dist\<name>.sha256.txt.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent # the project root, one up from tools\
 $name = [regex]::Match((Get-Content (Join-Path $root 'CMakeLists.txt') -Raw), 'project\((\w+)').Groups[1].Value

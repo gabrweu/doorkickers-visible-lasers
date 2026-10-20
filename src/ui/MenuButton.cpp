@@ -1,11 +1,14 @@
 // The Esc-menu button that opens the settings window (loader API 2; none on an older loader).
 #include "Lasers.h"
+#include "game/Game.h"
 
 namespace {
 
 void Clicked(void*, float, float, void*)
 {
-    Window_Toggle();
+    if (!game::Editing()) {
+        Window_Toggle();
+    }
 }
 
 } // namespace

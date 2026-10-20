@@ -108,7 +108,7 @@ void OpenPost(DK2ML_Regs*, void*)
             continue;
         }
         bool irShown = night && *night;
-        bool wanted = g_settings.perUnitLasers && g_trooperId != 0 && (!toggle.ir || irShown);
+        bool wanted = g_settings.perUnitLasers && g_trooperId != 0 && !game::Editing() && (!toggle.ir || irShown);
         if (!wanted) {
             ShowIfChanged(item, false);
             continue;
@@ -123,7 +123,12 @@ void OpenPost(DK2ML_Regs*, void*)
 
 } // namespace
 
+// False if this build lacks one of the optional names the buttons need.
 bool UnitButton_Init(const DK2ML_API* api)
 {
+    if (!game::GameGUI_OpenWaypointMenu.Resolved() || !game::ActionWP_Client_m_action.Resolved() ||
+        !game::sActionWP_ownerId.Resolved() || !game::EVENT_CLICK.Resolved()) {
+        return false;
+    }
     return dk2ml::Hook(api, game::GameGUI_OpenWaypointMenu, OpenPre, OpenPost);
 }

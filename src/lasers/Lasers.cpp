@@ -1,6 +1,5 @@
-// The game creates and shows a trooper's laser only at night with NVG on. Both hooks fake those two flags for the
-// length of the call, then the post styles and moves whatever laser the game showed. The game redoes it every frame.
-// A gun's laser override (Guns.cpp) is swapped into its shared template's hasLaser the same way.
+// Fakes the night/NVG flags around Init and UpdateLaserLight, then styles and moves the laser the game showed. A gun's
+// laser override (Guns.cpp) is swapped into its template's hasLaser for UpdateLaserLight only.
 #include <algorithm>
 #include <cmath>
 
@@ -12,12 +11,19 @@ namespace {
 constexpr int kRayVertices = 4;
 constexpr int kLightColorFloats = 6; // Vector3[2]
 
-// scratch[2], pre to post
+// UpdateLaserLight scratch: [0] human, [1] swapped gun template, [2] state, [3] night flag.
 constexpr uint64_t kRestore = 1;
 constexpr uint64_t kWasNight = 2;
 constexpr uint64_t kWasNvg = 4;
 constexpr uint64_t kFaked = 8; // shown by faking the flags: the visible style
 constexpr uint64_t kOn = 16;
+constexpr uint64_t kHadLaser = 32; // the swapped template's own hasLaser
+
+// Restored through the saved pointer: g_pGameCommon also points at the server.
+bool* FlagIn(uint64_t slot)
+{
+    return reinterpret_cast<bool*>(slot);
+}
 
 float* LightColors(void* light, const dk2ml::Field<uint8_t>& params)
 {
@@ -133,28 +139,57 @@ game::Vector3 RightOfBeam(void* human, const game::Vector3& forward)
     return side;
 }
 
-// Night for Init: every trooper gets a (hidden) laser on every map.
+bool g_initFaked = false; // Init runs with the faked night
+
+// Init's own laser conditions besides night: not in the editor, a trooper.
+bool GetsLaser(void* human)
+{
+    void* tmpl = game::Entity_Common_m_pTemplate(human);
+    return !game::Editing() && tmpl && game::Human_Template_type(tmpl) == game::HUMAN_GOODGUY.Get();
+}
+
+// Night for Init: every trooper gets a (hidden) laser on every map. scratch[0]: the faked flag, or 0.
 int InitPre(DK2ML_Regs* regs, void*)
 {
     bool* night = game::NightFlag();
     regs->scratch[0] = 0;
-    if (night && !*night) {
+    if (night && !*night && GetsLaser(dk2ml::Arg<void*>(regs, 0))) {
         *night = true;
-        regs->scratch[0] = kRestore;
+        regs->scratch[0] = reinterpret_cast<uint64_t>(night);
+        g_initFaked = true;
     }
     return DK2ML_CALL_ORIGINAL;
 }
 
 void InitPost(DK2ML_Regs* regs, void*)
 {
-    bool* night = game::NightFlag();
-    if ((regs->scratch[0] & kRestore) && night) {
-        *night = false;
+    if (regs->scratch[0]) {
+        g_initFaked = false;
+        *FlagIn(regs->scratch[0]) = false;
     }
 }
 
-// Each view shows only its own kind: fake night + NVG to show a visible laser, clear NVG to hide an IR one.
-// scratch[1]: the gun template whose hasLaser was swapped, scratch[3]: its own value.
+// Inside a faked Init: the real (day) flag, so the gear isn't the night one. scratch[0]: the flag, or 0.
+int SetInventoryPre(DK2ML_Regs* regs, void*)
+{
+    bool* night = game::NightFlag();
+    regs->scratch[0] = 0;
+    if (g_initFaked && night && *night) {
+        *night = false;
+        regs->scratch[0] = reinterpret_cast<uint64_t>(night);
+    }
+    return DK2ML_CALL_ORIGINAL;
+}
+
+void SetInventoryPost(DK2ML_Regs* regs, void*)
+{
+    if (regs->scratch[0]) {
+        *FlagIn(regs->scratch[0]) = true;
+    }
+}
+
+// Each view shows only its kind: fake night + NVG to show a visible laser, clear NVG to hide an IR one. The editor and
+// humans without a laser (enemies, the dead) are left alone.
 int UpdatePre(DK2ML_Regs* regs, void*)
 {
     regs->scratch[0] = reinterpret_cast<uint64_t>(dk2ml::Arg<void*>(regs, 0));
@@ -162,47 +197,49 @@ int UpdatePre(DK2ML_Regs* regs, void*)
     regs->scratch[2] = 0;
 
     void* human = reinterpret_cast<void*>(regs->scratch[0]);
-    void* item = game::Human_Client_m_pEquippedItem(human);
-    const bool* own = Guns_LaserOverride(item);
-    if (own && *own != game::EqpFirearm_Template_hasLaser(item)) {
-        regs->scratch[1] = reinterpret_cast<uint64_t>(item);
-        regs->scratch[3] = game::EqpFirearm_Template_hasLaser(item);
-        game::EqpFirearm_Template_hasLaser(item) = *own;
-    }
-
     bool* night = game::NightFlag();
     bool* nvg = game::NvgFlag();
-    if (!night || !nvg) {
+    if (!night || !nvg || game::Editing() || !game::Human_Client_m_pLaserLight(human)) {
         return DK2ML_CALL_ORIGINAL;
     }
 
     bool irView = game::NvgView();
     bool on = (irView ? g_settings.nvg.on : g_settings.visible.on) && Units_LaserOn(human, irView);
     uint64_t state = (*night ? kWasNight : 0) | (*nvg ? kWasNvg : 0) | (on ? kOn : 0);
-    regs->scratch[2] = state;
+
+    void* item = game::Human_Client_m_pEquippedItem(human);
+    const bool* own = Guns_LaserOverride(item);
+    if (own && *own != game::EqpFirearm_Template_hasLaser(item)) {
+        regs->scratch[1] = reinterpret_cast<uint64_t>(item);
+        state |= game::EqpFirearm_Template_hasLaser(item) ? kHadLaser : 0;
+        game::EqpFirearm_Template_hasLaser(item) = *own;
+    }
+
+    regs->scratch[3] = reinterpret_cast<uint64_t>(night);
     if (!on && irView) {
         *nvg = false;
-        regs->scratch[2] = state | kRestore;
+        state |= kRestore;
     } else if (on && !irView) {
         *night = true;
         *nvg = true;
-        regs->scratch[2] = state | kRestore | kFaked;
+        state |= kRestore | kFaked;
     }
+    regs->scratch[2] = state;
     return DK2ML_CALL_ORIGINAL;
 }
 
 void UpdatePost(DK2ML_Regs* regs, void*)
 {
+    uint64_t state = regs->scratch[2];
     if (void* item = reinterpret_cast<void*>(regs->scratch[1])) {
-        game::EqpFirearm_Template_hasLaser(item) = regs->scratch[3] != 0;
+        game::EqpFirearm_Template_hasLaser(item) = (state & kHadLaser) != 0;
     }
 
-    uint64_t state = regs->scratch[2];
-    bool* night = game::NightFlag();
-    bool* nvg = game::NvgFlag();
-    if ((state & kRestore) && night && nvg) {
-        *night = (state & kWasNight) != 0;
-        *nvg = (state & kWasNvg) != 0;
+    if (state & kRestore) {
+        *FlagIn(regs->scratch[3]) = (state & kWasNight) != 0;
+        if (bool* nvg = game::NvgFlag()) {
+            *nvg = (state & kWasNvg) != 0;
+        }
     }
 
     void* human = reinterpret_cast<void*>(regs->scratch[0]);
@@ -230,5 +267,6 @@ void UpdatePost(DK2ML_Regs* regs, void*)
 bool Lasers_Init(const DK2ML_API* api)
 {
     return dk2ml::Hook(api, game::Human_Client_Init, InitPre, InitPost) &&
+           dk2ml::Hook(api, game::Human_Client_SetInventory, SetInventoryPre, SetInventoryPost) &&
            dk2ml::Hook(api, game::Human_Client_UpdateLaserLight, UpdatePre, UpdatePost);
 }

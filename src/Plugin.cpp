@@ -34,9 +34,19 @@ const DK2ML_API* g_api = nullptr;
 constexpr const wchar_t* kSection = L"lasers";
 std::wstring g_settingsFile; // empty: defaults only
 
+constexpr DWORD kSaveDelayMs = 500; // sliders change every frame while dragged
+bool g_dirty = false;
+DWORD g_lastChange = 0;
+
 int ReadInt(const wchar_t* key, int fallback)
 {
     return GetPrivateProfileIntW(kSection, key, fallback, g_settingsFile.c_str());
+}
+
+// 0 (unbound), a key, or middle/side mouse (left/right are the game's); left/right modifiers become the generic one.
+int ValidKey(int vk, int fallback)
+{
+    return vk == 0 || (vk >= VK_MBUTTON && vk <= 0xFE) ? GenericModifier(vk) : fallback;
 }
 
 float ReadFloat(const wchar_t* key, float fallback)
@@ -97,28 +107,40 @@ void SaveStyle(SectionWriter& out, const std::wstring& prefix, const LaserStyle&
     out.Float(prefix + L"DotSize", style.dotSize);
 }
 
-void LoadSettings()
+// Per-trooper mode keeps the global visible switch on; the troopers' own switches start off instead.
+void ResetMissionState()
 {
-    if (!g_api->GetConfigDir()[0]) {
-        return;
-    }
-
-    g_settingsFile = std::wstring(g_api->GetConfigDir()) + L"settings.ini";
-    Settings& s = g_settings;
-    s.toggleKey = ReadInt(L"toggleKey", s.toggleKey);
-    s.perUnitLasers = ReadInt(L"perUnitLasers", s.perUnitLasers) != 0;
-    s.visibleAtStart = ReadInt(L"visibleAtStart", s.visibleAtStart) != 0;
-    s.heightCm = ReadFloat(L"heightCm", s.heightCm, kHeightRange);
-    s.backCm = ReadFloat(L"backCm", s.backCm, kBackRange);
-    s.sideCm = ReadFloat(L"sideCm", s.sideCm, kSideRange);
-    LoadStyle(L"visible", s.visible);
-    LoadStyle(L"nvg", s.nvg);
-    Guns_Load(g_settingsFile);
+    g_settings.nvg.on = true;
+    g_settings.visible.on = g_settings.perUnitLasers || g_settings.visibleAtStart;
+    Units_Clear();
 }
 
-void SaveOption(const DK2ML_Option*, void*)
+void LoadSettings()
 {
-    Settings_Save();
+    if (g_api->GetConfigDir()[0]) {
+        g_settingsFile = std::wstring(g_api->GetConfigDir()) + L"settings.ini";
+        Settings& s = g_settings;
+        s.toggleKey = ValidKey(ReadInt(L"toggleKey", s.toggleKey), s.toggleKey);
+        s.perUnitLasers = ReadInt(L"perUnitLasers", s.perUnitLasers) != 0;
+        s.visibleAtStart = ReadInt(L"visibleAtStart", s.visibleAtStart) != 0;
+        s.heightCm = ReadFloat(L"heightCm", s.heightCm, kHeightRange);
+        s.backCm = ReadFloat(L"backCm", s.backCm, kBackRange);
+        s.sideCm = ReadFloat(L"sideCm", s.sideCm, kSideRange);
+        LoadStyle(L"visible", s.visible);
+        LoadStyle(L"nvg", s.nvg);
+        Guns_Load(g_settingsFile);
+    }
+    ResetMissionState(); // as at a mission start, until the first one
+}
+
+// The loader reports every step of a slider drag.
+void SaveOption(const DK2ML_Option* option, void*)
+{
+    if (option->type == DK2ML_OPTION_FLOAT || option->type == DK2ML_OPTION_INT) {
+        Settings_SaveSoon();
+    } else {
+        Settings_Save();
+    }
 }
 
 void AddOption(DK2ML_OptionType type, const char* label, const char* tooltip, void* value, float min = 0.0f,
@@ -137,7 +159,7 @@ void AddHeader(const char* label)
 
 void AddStyleOptions(const char* header, LaserStyle& style)
 {
-    static const char* colorNames[kColorPresetCount];
+    const char* colorNames[kColorPresetCount]; // the loader copies them
     for (int i = 0; i < kColorPresetCount; ++i) {
         colorNames[i] = kColorPresets[i].name;
     }
@@ -168,7 +190,7 @@ void AddOptions()
     AddHeader("era's Lasers Enhanced");
     AddOption(DK2ML_OPTION_KEY, "Toggle lasers",
               "Turns the lasers in view on or off: IR with night vision on, visible with it off. With Per-trooper "
-              "lasers: the selected trooper's, Shift for the whole team",
+              "lasers: the selected trooper's, Shift for the whole team (none if the key is Shift itself)",
               &g_settings.toggleKey);
     AddOption(DK2ML_OPTION_BOOL, "Per-trooper lasers",
               "Laser on/off buttons in each trooper's right-click menu, and the key works per trooper. Choices last "
@@ -205,7 +227,7 @@ bool KeyDown(int vk)
     return vk > 0 && (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 
-// Ctrl/Alt held: another mod's or the game's combination (R27).
+// Ctrl/Alt held: someone else's combination.
 bool Chord(int vk)
 {
     return vk != VK_CONTROL && vk != VK_MENU && (KeyDown(VK_CONTROL) || KeyDown(VK_MENU));
@@ -213,14 +235,15 @@ bool Chord(int vk)
 
 bool CanToggle()
 {
-    return game::MissionRunning() && !dk2ml::GameMenuOpen(g_api) && !game::ChatOpen() && !Window_IsRebinding() &&
-           !Chord(g_settings.toggleKey);
+    return game::MissionRunning() && !game::Editing() && !dk2ml::GameMenuOpen(g_api) && !game::ChatOpen() &&
+           !Window_IsRebinding() && !Window_ImGuiWantsKeyboard() && !Chord(g_settings.toggleKey);
 }
 
 void Toggle()
 {
     if (g_settings.perUnitLasers) {
-        if (KeyDown(VK_SHIFT)) { // the game's status keys use Shift for the team
+        // The game's status keys use Shift for the team; a Shift key binding has no team toggle.
+        if (g_settings.toggleKey != VK_SHIFT && KeyDown(VK_SHIFT)) {
             Units_ToggleAll();
         } else {
             Units_ToggleSelected();
@@ -239,6 +262,9 @@ void OnFrame(const DK2ML_Event*, void*)
         g_capturing = capture;
     }
     Window_Draw();
+    if (g_dirty && GetTickCount() - g_lastChange >= kSaveDelayMs) {
+        Settings_SaveNow();
+    }
 
     // A just-rebound key is still held: it waits for its next press.
     bool down = g_api->IsGameFocused() && KeyDown(g_settings.toggleKey);
@@ -252,12 +278,9 @@ void OnFrame(const DK2ML_Event*, void*)
     g_toggleWasDown = down;
 }
 
-// Per-trooper mode keeps the global visible switch on; the troopers' own switches start off instead.
 void OnMapLoaded(const DK2ML_Event*, void*)
 {
-    g_settings.nvg.on = true;
-    g_settings.visible.on = g_settings.perUnitLasers || g_settings.visibleAtStart;
-    Units_Clear();
+    ResetMissionState();
 }
 
 } // namespace
@@ -281,6 +304,42 @@ void Settings_Save()
     out.text += L'\0';
     WritePrivateProfileSectionW(kSection, out.text.c_str(), g_settingsFile.c_str());
     Guns_Save(g_settingsFile);
+}
+
+void Settings_SaveSoon()
+{
+    g_dirty = true;
+    g_lastChange = GetTickCount();
+}
+
+void Settings_SaveNow()
+{
+    if (g_dirty) {
+        g_dirty = false;
+        Settings_Save();
+    }
+}
+
+std::string Utf8(std::wstring_view text)
+{
+    int count =
+        WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    std::string utf8(count, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), utf8.data(), count, nullptr, nullptr);
+    return utf8;
+}
+
+int GenericModifier(int vk)
+{
+    switch (vk) {
+    case VK_LSHIFT:
+    case VK_RSHIFT: return VK_SHIFT;
+    case VK_LCONTROL:
+    case VK_RCONTROL: return VK_CONTROL;
+    case VK_LMENU:
+    case VK_RMENU: return VK_MENU;
+    default: return vk;
+    }
 }
 
 uint32_t StyleRgb(const LaserStyle& style)
@@ -307,8 +366,11 @@ DK2ML_EXPORT int DK2ML_PluginInit(const DK2ML_API* api, const DK2ML_PluginInfo*)
     if (!dk2ml::ResolveAll(api)) {
         return 2;
     }
-    if (!Lasers_Init(api) || !UnitButton_Init(api)) {
+    if (!Lasers_Init(api)) {
         return 3;
+    }
+    if (!UnitButton_Init(api)) {
+        api->Log("per-trooper buttons unavailable in this game build; the toggle key still works");
     }
     if (!dk2ml::On(api, DK2ML_EVENT_FRAME, OnFrame) || !dk2ml::On(api, DK2ML_EVENT_MAP_LOADED, OnMapLoaded)) {
         return 4;

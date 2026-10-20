@@ -1,11 +1,7 @@
-# Developer install: dry-runs the plugin with symtest, then copies the mod (mod\ + the DLL in native\) to
-# %LOCALAPPDATA%\KillHouseGames\DoorKickers2\mods_upload\<name>\, the folder the in-game Mods menu uploads to the
-# Workshop from. Needs the Door Kickers 2 Modloader (dk2ml.dll and dbghelp.dll) in the game folder. It only adds and
-# overwrites files: one removed from mod\ stays in the target until deleted by hand. Close the game first: it locks
-# the DLL.
+# Dry-runs the plugin with symtest, then copies mod\ + the DLL (native\) to the game's mods_upload\<name>\. Only adds
+# and overwrites files. Close the game first: it locks the DLL.
 #   -GameDir  the game folder
-#   -SymTest  the loader repo's symtest.exe, which dry-runs the plugin's init first. Found automatically in
-#             ..\doorkickers-modloader\build\ next to this repo. It runs in build\, so its log lands there.
+#   -SymTest  symtest.exe; default ..\doorkickers-modloader\build\symtest.exe. Runs in build\, so its log lands there.
 param(
     [string]$GameDir = 'C:\Program Files (x86)\Steam\steamapps\common\DoorKickers2',
     [string]$SymTest

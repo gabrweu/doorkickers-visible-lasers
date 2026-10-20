@@ -23,10 +23,6 @@ bool g_keysHeldAtRebindStart[256] = {};
 constexpr DWORD kResetConfirmMs = 3000;
 DWORD g_resetArmedAt = 0;
 
-constexpr DWORD kSaveDelayMs = 500; // sliders change every frame while dragged
-bool g_dirty = false;
-DWORD g_lastChange = 0;
-
 constexpr int kVkUnassigned = 0x07;
 constexpr int kVkReserved = 0xFF;
 
@@ -47,15 +43,15 @@ std::string KeyName(int vk)
         // clang-format off
     case VK_INSERT: case VK_DELETE: case VK_HOME: case VK_END: case VK_PRIOR: case VK_NEXT:
     case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN: case VK_DIVIDE: case VK_NUMLOCK:
-    case VK_RMENU: case VK_RCONTROL:
         lParam |= 1 << 24;
         break;
         // clang-format on
     }
 
-    char name[64] = {};
-    if (scan && GetKeyNameTextA(lParam, name, sizeof(name)) > 0) {
-        return name;
+    wchar_t name[64] = {};
+    int length = scan ? GetKeyNameTextW(lParam, name, 64) : 0;
+    if (length > 0) { // ImGui takes UTF-8
+        return Utf8(std::wstring_view(name, length));
     }
     char hex[16];
     sprintf_s(hex, "0x%02X", vk);
@@ -132,19 +128,6 @@ void EndSection()
     imgui::Unindent(kIndent);
 }
 
-int GenericModifier(int vk)
-{
-    switch (vk) {
-    case VK_LSHIFT:
-    case VK_RSHIFT: return VK_SHIFT;
-    case VK_LCONTROL:
-    case VK_RCONTROL: return VK_CONTROL;
-    case VK_LMENU:
-    case VK_RMENU: return VK_MENU;
-    default: return vk;
-    }
-}
-
 // Keys held when rebinding started count only after a release. Left/right mouse are the game's order buttons.
 void UpdateRebind()
 {
@@ -162,8 +145,7 @@ void UpdateRebind()
             g_keysHeldAtRebindStart[vk] = false;
             continue;
         }
-        bool genericModifier = vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU;
-        if (g_keysHeldAtRebindStart[vk] || genericModifier) {
+        if (g_keysHeldAtRebindStart[vk]) {
             continue;
         }
 
@@ -209,15 +191,22 @@ int ToByte(float channel)
     return static_cast<int>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
 }
 
-// id keeps the two sections' ImGui IDs apart.
-bool DrawStyle(const char* title, const char* onLabel, const char* id, LaserStyle& style, bool* atStart = nullptr)
+// id keeps the two sections' ImGui IDs apart. Per-trooper: "on" is any trooper's.
+bool DrawStyle(const char* title, const char* id, bool ir, LaserStyle& style, bool* atStart = nullptr)
 {
     bool changed = false;
     char label[96];
     BeginSection(title);
 
-    sprintf_s(label, "%s##%s", onLabel, id);
-    changed |= imgui::Checkbox(label, &style.on);
+    sprintf_s(label, "Active right now##%s", id);
+    if (g_settings.perUnitLasers) {
+        bool on = Units_AnyOn(ir);
+        if (imgui::Checkbox(label, &on)) {
+            Units_SetAll(ir, on);
+        }
+    } else {
+        imgui::Checkbox(label, &style.on);
+    }
     imgui::SameLine(0.0f, 24.0f);
     if (atStart) {
         sprintf_s(label, "On at mission start##%s", id);
@@ -264,11 +253,15 @@ bool DrawResetButton()
         g_resetArmedAt = GetTickCount();
         return false;
     }
-    bool visibleOn = g_settings.visible.on; // per mission, not a setting
+    // Keep the mission's on/off; Units_SetPerUnit switches the mode.
+    bool perUnit = g_settings.perUnitLasers;
+    bool visibleOn = g_settings.visible.on;
     bool nvgOn = g_settings.nvg.on;
     g_settings = Settings{};
+    g_settings.perUnitLasers = perUnit;
     g_settings.visible.on = visibleOn;
     g_settings.nvg.on = nvgOn;
+    Units_SetPerUnit(Settings{}.perUnitLasers);
     g_rebindSlot = nullptr;
     g_resetArmedAt = 0;
     return true;
@@ -286,25 +279,28 @@ bool DrawSettings()
     imgui::TextDisabled("era's Lasers Enhanced version %s, built %s", PLUGIN_VERSION, PLUGIN_BUILD_TIME);
 
     BeginSection("Controls");
-    changed |= imgui::Checkbox("Per-trooper lasers (button in the right-click menu)", &s.perUnitLasers);
+    bool perUnit = s.perUnitLasers;
+    if (imgui::Checkbox("Per-trooper lasers (button in the right-click menu)", &perUnit)) {
+        Units_SetPerUnit(perUnit);
+        changed = true;
+    }
     KeyRow("Toggle lasers", &s.toggleKey);
     EndSection();
 
-    BeginSection("Laser Position (for guns without override)");
+    BeginSection("Laser position (guns without their own)");
     changed |= Slider("Height above barrel", &s.heightCm, kHeightRange, "%.1f cm");
     changed |= Slider("Start behind muzzle", &s.backCm, kBackRange, "%.1f cm");
     changed |= Slider("Left / right of barrel", &s.sideCm, kSideRange, "%.1f cm");
     imgui::TextDisabled("right is positive, left negative");
     EndSection();
 
-    changed |=
-        DrawStyle("Visible lasers (without night vision)", "Active right now", "visible", s.visible, &s.visibleAtStart);
-    changed |= DrawStyle("IR lasers (with night vision)", "Active right now", "nvg", s.nvg);
+    changed |= DrawStyle("Visible lasers (without night vision)", "visible", false, s.visible, &s.visibleAtStart);
+    changed |= DrawStyle("IR lasers (with night vision)", "nvg", true, s.nvg);
 
     imgui::Spacing();
     Separator();
     imgui::Spacing();
-    changed |= DrawResetButton(); // Close follows on its line
+    changed |= DrawResetButton();
     return changed;
 }
 
@@ -335,26 +331,26 @@ bool DrawGunPanel()
                 changed = true;
             }
             imgui::SameLine(0.0f, -1.0f);
-            imgui::TextDisabled(stock ? "(the game gives it one)" : "(the game DOESN'T give it)");
+            imgui::TextDisabled(stock ? "(the game gives it one)" : "(the game gives it none)");
+
+            bool own = Guns_Find(name) != nullptr;
+            if (imgui::Checkbox("Gun specific position##gun", &own)) {
+                if (own) {
+                    Guns_Set(name, {g_settings.heightCm, g_settings.backCm, g_settings.sideCm});
+                } else {
+                    Guns_Remove(name);
+                }
+                changed = true;
+            }
+            if (GunOffset* offset = Guns_Find(name)) {
+                imgui::Indent(kIndent);
+                changed |= Slider("Height above barrel##gun", &offset->heightCm, kHeightRange, "%.1f cm");
+                changed |= Slider("Start behind muzzle##gun", &offset->backCm, kBackRange, "%.1f cm");
+                changed |= Slider("Left / right of barrel##gun", &offset->sideCm, kSideRange, "%.1f cm");
+                imgui::Unindent(kIndent);
+            }
         } else {
             imgui::TextDisabled("Not a firearm: no laser");
-        }
-
-        bool own = Guns_Find(name) != nullptr;
-        if (imgui::Checkbox("Gun specific position##gun", &own)) {
-            if (own) {
-                Guns_Set(name, {g_settings.heightCm, g_settings.backCm, g_settings.sideCm});
-            } else {
-                Guns_Remove(name);
-            }
-            changed = true;
-        }
-        if (GunOffset* offset = Guns_Find(name)) {
-            imgui::Indent(kIndent);
-            changed |= Slider("Height above barrel##gun", &offset->heightCm, kHeightRange, "%.1f cm");
-            changed |= Slider("Start behind muzzle##gun", &offset->backCm, kBackRange, "%.1f cm");
-            changed |= Slider("Left / right of barrel##gun", &offset->sideCm, kSideRange, "%.1f cm");
-            imgui::Unindent(kIndent);
         }
     }
     EndSection();
@@ -404,11 +400,9 @@ bool DrawGunPanel()
     return changed;
 }
 
-// No SetNextWindowPos: Pos is written before Begin through last frame's window (same context only), and after it for
-// the first frame, which ImGui hides while sizing the window.
+// No SetNextWindowPos: Pos is written before Begin and again after it (its first frame).
 constexpr float kGunWindowGap = 8.0f;
-void* g_gunWindow = nullptr;
-void* g_gunWindowContext = nullptr;
+void* g_gunWindow = nullptr; // null on frames it isn't drawn
 
 bool DrawGunWindow(imgui::ImVec2 pos)
 {
@@ -416,7 +410,7 @@ bool DrawGunWindow(imgui::ImVec2 pos)
     if (!context) {
         return false;
     }
-    if (g_gunWindow && g_gunWindowContext == context) {
+    if (g_gunWindow) {
         imgui::ImGuiWindow_Pos(g_gunWindow) = pos;
     }
 
@@ -429,7 +423,6 @@ bool DrawGunWindow(imgui::ImVec2 pos)
         changed = DrawGunPanel();
     }
     g_gunWindow = imgui::ImGuiContext_CurrentWindow(context);
-    g_gunWindowContext = context;
     if (g_gunWindow) {
         imgui::ImGuiWindow_Pos(g_gunWindow) = pos;
     }
@@ -464,7 +457,7 @@ bool Window_IsRebinding()
     return g_rebindSlot != nullptr;
 }
 
-// A capture blocks the whole map and HUD, so only while ImGui uses the input (R28). A rebind takes every key.
+// A capture blocks the map and HUD: only while ImGui uses the input or a rebind waits.
 bool Window_WantsInput()
 {
     void* context = *imgui::GImGui;
@@ -474,30 +467,35 @@ bool Window_WantsInput()
 
     int io = imgui::ImGuiContext_IO.Offset();
     return g_rebindSlot || dk2ml::At<bool>(context, io + imgui::ImGuiIO_WantCaptureMouse.Offset()) ||
-           dk2ml::At<bool>(context, io + imgui::ImGuiIO_WantCaptureKeyboard.Offset());
+           Window_ImGuiWantsKeyboard();
+}
+
+// Any ImGui window's, not just this plugin's: a focused text field or a Ctrl+clicked slider.
+bool Window_ImGuiWantsKeyboard()
+{
+    void* context = *imgui::GImGui;
+    return context &&
+           dk2ml::At<bool>(context, imgui::ImGuiContext_IO.Offset() + imgui::ImGuiIO_WantCaptureKeyboard.Offset());
 }
 
 void Window_Draw()
 {
-    if (g_dirty && GetTickCount() - g_lastChange >= kSaveDelayMs) {
-        g_dirty = false;
-        Settings_Save();
-    }
-
     if (!g_open) {
         g_rebindSlot = nullptr;
+        g_gunWindow = nullptr;
         return;
     }
 
     bool open = game::MissionRunning() && !game::Editing();
     bool changed = false;
+    bool gunDrawn = false;
     if (open) {
         int flags =
             static_cast<int>(imgui::ImGuiWindowFlags_NoCollapse.Get() | imgui::ImGuiWindowFlags_AlwaysAutoResize.Get());
         PushStyle();
         if (imgui::Begin("era's Lasers Enhanced##dk2ml_vlasers", &open, flags)) {
             changed = DrawSettings();
-            imgui::SameLine(0.0f, -1.0f);
+            imgui::SameLine(0.0f, -1.0f); // on the Reset button's line
             if (Button("Close")) {
                 open = false;
             }
@@ -508,19 +506,19 @@ void Window_Draw()
         PopStyle();
         if (open && besideIt) {
             changed |= DrawGunWindow(gunWindowPos);
+            gunDrawn = true;
         }
+    }
+    if (!gunDrawn) {
+        g_gunWindow = nullptr;
     }
 
     if (changed) {
-        g_dirty = true;
-        g_lastChange = GetTickCount();
+        Settings_SaveSoon();
     }
     if (!open) {
         g_open = false;
         g_rebindSlot = nullptr;
-        if (g_dirty) {
-            g_dirty = false;
-            Settings_Save();
-        }
+        Settings_SaveNow();
     }
 }

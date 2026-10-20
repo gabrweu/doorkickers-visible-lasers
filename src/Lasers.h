@@ -58,7 +58,11 @@ struct Settings {
 extern Settings g_settings;
 
 void Settings_Save();
+void Settings_SaveSoon();                    // debounced
+void Settings_SaveNow();                     // a pending debounced save, now
 uint32_t StyleRgb(const LaserStyle& style); // 0x00BBGGRR, Vertex3D::color's byte order
+int GenericModifier(int vk);                 // left/right Shift, Ctrl, Alt to the generic key
+std::string Utf8(std::wstring_view text);
 
 // --- lasers/Lasers.cpp ---
 bool Lasers_Init(const DK2ML_API* api);
@@ -70,9 +74,12 @@ void* Units_Human(uint32_t id); // the Human_Client with that entity id, or null
 void Units_Toggle(uint32_t id, bool ir);
 void Units_ToggleSelected(); // the kind in view
 void Units_ToggleAll();      // the kind in view, every trooper the local player commands
-void Units_Clear();          // mission start
+void Units_SetAll(bool ir, bool on); // every trooper, also ones that appear later, until the next mission
+bool Units_AnyOn(bool ir);           // any of the local player's troopers
+void Units_SetPerUnit(bool perUnit); // switches Settings::perUnitLasers mid-mission, carrying the on/off state over
+void Units_Clear();                  // mission start
 
-// --- lasers/Guns.cpp: laser position per gun name, others use the settings'; a laser added to or removed from a gun ---
+// --- lasers/Guns.cpp: per-gun laser position and laser override ---
 struct GunOffset {
     float heightCm, backCm, sideCm;
 };
@@ -102,4 +109,5 @@ void MenuButton_Register(const DK2ML_API* api);
 void Window_Toggle();
 bool Window_IsRebinding();
 bool Window_WantsInput(); // keep the game's input while ImGui uses it
-void Window_Draw(); // every frame; saves changes once they settle
+bool Window_ImGuiWantsKeyboard(); // any ImGui window is taking keys (typing)
+void Window_Draw(); // every frame

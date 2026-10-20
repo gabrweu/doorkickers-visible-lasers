@@ -1,6 +1,5 @@
-// Laser position per gun, keyed by the gun's template name (the game has no laser mount data), and a laser added to or
-// removed from a gun (its hasLaser, which the laser hook swaps in for UpdateLaserLight only). Kept out of Settings so
-// "Reset all settings" doesn't clear them.
+// Laser position per gun, by template name (the game has none), and per-gun hasLaser overrides. Outside Settings, so
+// "Reset all settings" keeps them.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -33,15 +32,6 @@ std::wstring Wide(std::string_view text)
     std::wstring wide(count, L'\0');
     MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), count);
     return wide;
-}
-
-std::string Narrow(std::wstring_view text)
-{
-    int count =
-        WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    std::string narrow(count, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), narrow.data(), count, nullptr, nullptr);
-    return narrow;
 }
 
 GunOffset Clamped(GunOffset offset)
@@ -93,7 +83,7 @@ void LoadLasers(const std::wstring& file)
 
         const wchar_t* value = equals + 1;
         if (_wcsicmp(value, L"on") == 0 || _wcsicmp(value, L"off") == 0) {
-            Guns_SetLaser(Narrow(std::wstring_view(line, equals - line)), _wcsicmp(value, L"on") == 0);
+            Guns_SetLaser(Utf8(std::wstring_view(line, equals - line)), _wcsicmp(value, L"on") == 0);
         }
     }
 }
@@ -218,7 +208,7 @@ void Guns_Load(const std::wstring& file)
                 side = 0.0f;
             }
         }
-        Guns_Set(Narrow(std::wstring_view(line, equals - line)), {height, back, side});
+        Guns_Set(Utf8(std::wstring_view(line, equals - line)), {height, back, side});
     }
 }
 
