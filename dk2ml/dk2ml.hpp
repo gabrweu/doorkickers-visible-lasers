@@ -410,6 +410,108 @@ inline bool OnGuiEvent(const DK2ML_API* api, int64_t guiEventId, DK2ML_EventFn f
     return guiEventId > 0 && api->SubscribeGuiEvent(static_cast<uint32_t>(guiEventId), fn, user) == DK2ML_OK;
 }
 
+// --- replay data (API 3) ---
+
+// Keeps data in replay files (see "replay data" in dk2ml.h); init only. False (logged) on an API 1/2 loader:
+//   dk2ml::AddReplayData(api, "author.mod", Save, Load);
+inline bool AddReplayData(const DK2ML_API* api, const char* key, void (*save)(DK2ML_ReplayWriter* out, void* user),
+                          void (*load)(const void* data, size_t size, void* user), void* user = nullptr)
+{
+    if (api->structSize <= offsetof(DK2ML_API, AddReplayData)) {
+        api->Log("this loader can't keep data in replays (plugin API %u, it needs 3)", api->apiVersion);
+        return false;
+    }
+    DK2ML_ReplayData data = {sizeof(data), key, save, load, user};
+    return api->AddReplayData(&data) == DK2ML_OK;
+}
+
+// A replay plays now; false on an API 1/2 loader.
+inline bool IsReplaying(const DK2ML_API* api)
+{
+    return api->structSize > offsetof(DK2ML_API, IsReplaying) && api->IsReplaying() != 0;
+}
+
+// Writes values into a save callback's out, as in memory (little-endian); put a struct field by field, as its padding
+// bytes are undefined:
+//   void Save(DK2ML_ReplayWriter* out, void*)
+//   {
+//       dk2ml::ReplayOut w{g_api, out};
+//       w.Put<uint16_t>(1); // the format's version
+//       w.Put<uint32_t>(static_cast<uint32_t>(g_changes.size()));
+//       for (const Change& c : g_changes) {
+//           w.Put<int32_t>(c.timeMs);
+//           w.Put<uint8_t>(c.on ? 1 : 0);
+//       }
+//   }
+class ReplayOut {
+  public:
+    ReplayOut(const DK2ML_API* api, DK2ML_ReplayWriter* out) : api_(api), out_(out) {}
+
+    bool Bytes(const void* data, size_t size)
+    {
+        ok_ = ok_ && api_->ReplayWrite(out_, data, size) == DK2ML_OK;
+        return ok_;
+    }
+
+    template <typename T> bool Put(T value)
+    {
+        static_assert(std::is_trivially_copyable<T>::value, "Put copies the value's bytes");
+        return Bytes(&value, sizeof(T));
+    }
+
+    // false after a failed write: then nothing of this save is stored
+    bool Ok() const { return ok_; }
+
+  private:
+    const DK2ML_API* api_;
+    DK2ML_ReplayWriter* out_;
+    bool ok_ = true;
+};
+
+// Reads values back in a load callback, in the order written; false once the data runs out (never reads past it):
+//   void Load(const void* data, size_t size, void*)
+//   {
+//       dk2ml::ByteReader r{data, size};
+//       uint16_t version = 0;
+//       uint32_t count = 0;
+//       if (!r.Get(&version) || version != 1 || !r.Get(&count)) {
+//           return; // none, or a format this version doesn't know: the defaults
+//       }
+//       ...
+//   }
+class ByteReader {
+  public:
+    ByteReader(const void* data, size_t size) : at_(static_cast<const uint8_t*>(data)), left_(data ? size : 0) {}
+
+    bool Bytes(void* out, size_t size)
+    {
+        if (size > left_) {
+            left_ = 0;
+            return false;
+        }
+        if (size) {
+            std::memcpy(out, at_, size);
+        }
+        at_ += size;
+        left_ -= size;
+        return true;
+    }
+
+    template <typename T> bool Get(T* value)
+    {
+        static_assert(std::is_trivially_copyable<T>::value, "Get copies the value's bytes");
+        static_assert(!std::is_same<T, bool>::value && !std::is_enum<T>::value,
+                      "Get an integer and convert it: the file's bytes may hold any value");
+        return Bytes(value, sizeof(T));
+    }
+
+    size_t Left() const { return left_; }
+
+  private:
+    const uint8_t* at_;
+    size_t left_;
+};
+
 // --- hooks ---
 
 // Creates and enables a safe hook. False if target is null (not logged) or CreateSafeHook/EnableHook fails (logged).

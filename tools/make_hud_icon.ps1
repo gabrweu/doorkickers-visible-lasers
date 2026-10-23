@@ -1,6 +1,6 @@
-# The per-trooper laser toggles (visible and IR) for the right-click menu, in the style of its stock top-row toggles (go silent, always
-# wait, speed sync), into mod/textures/hud, as uncompressed 32-bit BGRA DDS like the stock textures. Adapted from Free
-# Camera's make_hud_icon.ps1. -PreviewDir also writes a PNG sheet.
+# The per-trooper laser (visible and IR), light and Behaviors toggles for the right-click menu, in the style of its
+# stock top-row toggles (go silent, always wait, speed sync), into mod/textures/hud, as uncompressed 32-bit BGRA DDS
+# like the stock textures. Adapted from Free Camera's make_hud_icon.ps1. -PreviewDir also writes a PNG sheet.
 param([string]$PreviewDir)
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ $menuOffGlyph = [Drawing.Color]::FromArgb(0x20, 0x18, 0x18)
 $menuOn = [Drawing.Color]::FromArgb(0xf8, 0xa0, 0x00)
 $menuOnGlyph = [Drawing.Color]::FromArgb(0xa0, 0x38, 0x00)
 $menuHoverRim = [Drawing.Color]::FromArgb(0xf8, 0xc0, 0x00)
-# greyed: the trooper's gun has no laser
+# greyed (_none)
 $menuNone = [Drawing.Color]::FromArgb(0x80, 0x80, 0x80)
 $menuNoneGlyph = [Drawing.Color]::FromArgb(0x40, 0x40, 0x40)
 $scale = 4 # drawn at 4x and scaled down, for smooth edges like the stock textures
@@ -75,6 +75,73 @@ function Glyph-Laser($g, $cx, $cy, $color, [bool]$on, $k = 1) {
     $g.Restore($state)
 }
 
+# A flashlight (a body with a wider head) throwing a cone up and to the right, drawn around ($cx, $cy), about 45 pixels
+# long at $k = 1. $on fills the cone, off draws its outline dashed.
+function Glyph-Light($g, $cx, $cy, $color, [bool]$on, $k = 1) {
+    $state = $g.Save()
+    $g.TranslateTransform((Px $cx), (Px $cy))
+    $g.RotateTransform(-35)
+    $g.ScaleTransform($k, $k)
+    $brush = New-Object Drawing.SolidBrush $color
+
+    # the body, then the head flaring out toward the lens
+    $g.FillRectangle($brush, (Px (-22)), (Px (-3.5)), (Px 11), (Px 7))
+    $head = New-Object Drawing.Drawing2D.GraphicsPath
+    $head.AddPolygon([Drawing.PointF[]]@(
+            (New-Object Drawing.PointF (Px (-12)), (Px (-3.5))),
+            (New-Object Drawing.PointF (Px (-6)), (Px (-6.5))),
+            (New-Object Drawing.PointF (Px (-6)), (Px 6.5)),
+            (New-Object Drawing.PointF (Px (-12)), (Px 3.5))))
+    $g.FillPath($brush, $head)
+
+    $cone = New-Object Drawing.Drawing2D.GraphicsPath
+    $cone.AddPolygon([Drawing.PointF[]]@(
+            (New-Object Drawing.PointF (Px (-3)), (Px (-5))),
+            (New-Object Drawing.PointF (Px 22), (Px (-12))),
+            (New-Object Drawing.PointF (Px 22), (Px 12)),
+            (New-Object Drawing.PointF (Px (-3)), (Px 5))))
+    if ($on) {
+        $g.FillPath($brush, $cone)
+    } else {
+        $pen = New-Object Drawing.Pen $color, (Px 2.2)
+        $pen.DashPattern = [single[]]@(1.4, 1.4)
+        $pen.LineJoin = 'Round'
+        $g.DrawPath($pen, $cone)
+    }
+    $g.Restore($state)
+}
+
+# Engaging with a strobe: a crosshair (a ring with four ticks across it) and four short diagonal rays around it, drawn
+# around ($cx, $cy), about 46 pixels across at $k = 1. $on draws the rays solid and a dot at the center, off draws the
+# rays dashed and no dot.
+function Glyph-Engage($g, $cx, $cy, $color, [bool]$on, $k = 1) {
+    $state = $g.Save()
+    $g.TranslateTransform((Px $cx), (Px $cy))
+    $g.ScaleTransform($k, $k)
+    $brush = New-Object Drawing.SolidBrush $color
+
+    $reticle = New-Object Drawing.Pen $color, (Px 3)
+    $reticle.StartCap = 'Round'; $reticle.EndCap = 'Round'
+    $g.DrawEllipse($reticle, (Px (-9.5)), (Px (-9.5)), (Px 19), (Px 19))
+    foreach ($s in 1, -1) {
+        $g.DrawLine($reticle, (Px (5 * $s)), 0, (Px (14 * $s)), 0)
+        $g.DrawLine($reticle, 0, (Px (5 * $s)), 0, (Px (14 * $s)))
+    }
+    if ($on) {
+        $g.FillEllipse($brush, (Px (-3.5)), (Px (-3.5)), (Px 7), (Px 7))
+    }
+
+    $rays = New-Object Drawing.Pen $color, (Px 3)
+    $rays.StartCap = 'Round'; $rays.EndCap = 'Round'
+    if (-not $on) { $rays.DashPattern = [single[]]@(1.2, 1.6) }
+    for ($i = 0; $i -lt 4; $i++) {
+        $a = ($i * 2 + 1) * [Math]::PI / 4
+        $dx = [Math]::Cos($a); $dy = [Math]::Sin($a)
+        $g.DrawLine($rays, (Px (16 * $dx)), (Px (16 * $dy)), (Px (23 * $dx)), (Px (23 * $dy)))
+    }
+    $g.Restore($state)
+}
+
 # A short bold label ("VIS", "IR") centered on ($cx, $cy).
 function Glyph-Label($g, $cx, $cy, $color, $text) {
     $g.TextRenderingHint = 'AntiAliasGridFit'
@@ -85,10 +152,9 @@ function Glyph-Label($g, $cx, $cy, $color, $text) {
     $font.Dispose()
 }
 
-# A per-trooper toggle: a rounded diamond, orange with a dark glyph when off, amber with a brown glyph when on, a
-# yellow rim on hover, like the menu's stock toggles. The laser sits above a label naming the kind. $none draws it
-# grey with the off glyph, for a gun without a laser.
-function Draw-UnitToggle([string]$label, [bool]$on, [bool]$hover, [bool]$none = $false) {
+# A per-trooper toggle in the stock toggles' style. The glyph sits above $label, or centered without one. $none draws
+# it grey with the off glyph.
+function Draw-UnitToggle([string]$label, [bool]$on, [bool]$hover, [bool]$none = $false, [string]$glyphKind = 'laser') {
     $canvas = New-Canvas $unitSize $unitSize
     $g = $canvas.Graphics
     $c = $unitSize / 2
@@ -114,8 +180,14 @@ function Draw-UnitToggle([string]$label, [bool]$on, [bool]$hover, [bool]$none = 
     }
 
     $glyph = if ($none) { $menuNoneGlyph } elseif ($on) { $menuOnGlyph } else { $menuOffGlyph }
-    Glyph-Laser $g $c ($c - 6) $glyph $on 0.6
-    Glyph-Label $g $c ($c + 12) $glyph $label
+    $glyphY = if ($label) { $c - 6 } else { $c }
+    $k = if ($label) { 0.6 } else { 0.75 }
+    switch ($glyphKind) {
+        'light' { Glyph-Light $g $c $glyphY $glyph $on $k }
+        'engage' { Glyph-Engage $g $c $glyphY $glyph $on $k }
+        default { Glyph-Laser $g $c $glyphY $glyph $on $k }
+    }
+    if ($label) { Glyph-Label $g $c ($c + 12) $glyph $label }
     return Finish-Canvas $canvas
 }
 
@@ -159,6 +231,16 @@ $images = [ordered]@{
     'dk2ml_vlasers_unit_ir_on_hover'   = Draw-UnitToggle 'IR' $true $true
     'dk2ml_vlasers_unit_none'          = Draw-UnitToggle 'VIS' $false $false $true
     'dk2ml_vlasers_unit_ir_none'       = Draw-UnitToggle 'IR' $false $false $true
+    'dk2ml_vlasers_light_off_normal'   = Draw-UnitToggle '' $false $false $false 'light'
+    'dk2ml_vlasers_light_off_hover'    = Draw-UnitToggle '' $false $true $false 'light'
+    'dk2ml_vlasers_light_on_normal'    = Draw-UnitToggle '' $true $false $false 'light'
+    'dk2ml_vlasers_light_on_hover'     = Draw-UnitToggle '' $true $true $false 'light'
+    'dk2ml_vlasers_light_none'         = Draw-UnitToggle '' $false $false $true 'light'
+    'dk2ml_vlasers_behave_off_normal'  = Draw-UnitToggle '' $false $false $false 'engage'
+    'dk2ml_vlasers_behave_off_hover'   = Draw-UnitToggle '' $false $true $false 'engage'
+    'dk2ml_vlasers_behave_on_normal'   = Draw-UnitToggle '' $true $false $false 'engage'
+    'dk2ml_vlasers_behave_on_hover'    = Draw-UnitToggle '' $true $true $false 'engage'
+    'dk2ml_vlasers_behave_none'        = Draw-UnitToggle '' $false $false $true 'engage'
 }
 
 New-Item -ItemType Directory -Force $outDir | Out-Null

@@ -7,7 +7,7 @@ $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.e
 $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $vs) { throw 'MSVC x64 build tools not found' }
 
-$src = Split-Path $PSScriptRoot -Parent # the project root, one up from tools\
+$src = Split-Path $PSScriptRoot -Parent
 $build = Join-Path $src 'build'
 $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
 $env:PATH = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:PATH" # vcvars calls vswhere by name

@@ -1,3 +1,3 @@
 # doorkickers-visible-lasers
 
-Lasers enhanced.
+era's Lights and Lasers: lasers and tactical lights for Door Kickers 2.

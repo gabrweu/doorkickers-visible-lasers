@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = Split-Path $PSScriptRoot -Parent # the project root, one up from tools\
+$root = Split-Path $PSScriptRoot -Parent
 $name = [regex]::Match((Get-Content (Join-Path $root 'CMakeLists.txt') -Raw), 'project\((\w+)').Groups[1].Value
 $dll = Join-Path $root "build\$name.dll"
 if (-not (Test-Path $dll)) { throw 'Build first: .\tools\build.ps1' }
@@ -51,4 +51,4 @@ Copy-Item $dll (Join-Path $target 'native') -Force
 
 $missing = 'dk2ml.dll', 'dbghelp.dll' | Where-Object { -not (Test-Path (Join-Path $GameDir $_)) }
 if ($missing) { Write-Warning "The Modloader isn't installed in $GameDir (missing: $($missing -join ', '))." }
-Write-Host "Installed to $target. Enable 'era's Lasers Enhanced' in the in-game Mods menu; the loader logs to $GameDir\dk2ml.log."
+Write-Host "Installed to $target. Enable 'era's Lights and Lasers' in the in-game Mods menu; the loader logs to $GameDir\dk2ml.log."

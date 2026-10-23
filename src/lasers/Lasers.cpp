@@ -1,5 +1,5 @@
-// Fakes the night/NVG flags around Init and UpdateLaserLight, then styles and moves the laser the game showed. A gun's
-// laser override (Guns.cpp) is swapped into its template's hasLaser for UpdateLaserLight only.
+// Fakes the night/NVG flags around Init and UpdateLaserLight, styles and moves the laser, and places the light
+// (Lights.cpp) on its beam.
 #include <algorithm>
 #include <cmath>
 
@@ -8,16 +8,15 @@
 
 namespace {
 
-constexpr int kRayVertices = 4;
 constexpr int kLightColorFloats = 6; // Vector3[2]
 
-// UpdateLaserLight scratch: [0] human, [1] swapped gun template, [2] state, [3] night flag.
+// UpdateLaserLight scratch: [0] human, [1] gun template given a laser for the call, [2] state, [3] night flag.
 constexpr uint64_t kRestore = 1;
 constexpr uint64_t kWasNight = 2;
 constexpr uint64_t kWasNvg = 4;
-constexpr uint64_t kFaked = 8; // shown by faking the flags: the visible style
-constexpr uint64_t kOn = 16;
-constexpr uint64_t kHadLaser = 32; // the swapped template's own hasLaser
+constexpr uint64_t kFaked = 8; // visible laser view
+constexpr uint64_t kLaserOn = 16;
+constexpr uint64_t kLightOn = 32;
 
 // Restored through the saved pointer: g_pGameCommon also points at the server.
 bool* FlagIn(uint64_t slot)
@@ -30,8 +29,8 @@ float* LightColors(void* light, const dk2ml::Field<uint8_t>& params)
     return &dk2ml::At<float>(light, params.Offset() + game::sLightParams_colors.Offset());
 }
 
-// The laser light flickers, so the game never copies m_light into m_lightCurrent (what the renderer reads): colors and
-// radius go into both. Brightness is animated from m_light, so it's set from the template's, not multiplied in place.
+// The laser light is animated, so m_light isn't copied to m_lightCurrent: colors and radius go into both. The
+// multiplier is animated from m_light and set from the template's.
 void StyleLight(void* light, const LaserStyle& style)
 {
     uint32_t rgb = StyleRgb(style);
@@ -60,25 +59,28 @@ void StyleLight(void* light, const LaserStyle& style)
     game::Light_Client_m_dataChanged(light) = true;
 }
 
-uint32_t& RayColor(void* ray, int vertex)
-{
-    int vertices = game::RenderObject2D_quad.Offset() + game::Render2D_Quad_v.Offset();
-    int stride = static_cast<int>(game::Vertex3D_size.Get());
-    return dk2ml::At<uint32_t>(ray, vertices + vertex * stride + game::Vertex3D_color.Offset());
-}
-
 // The game zeroes the colors of a hidden ray.
 bool RayShown(void* ray)
 {
-    return RayColor(ray, 0) != 0;
+    return game::QuadColor(ray, 0) != 0;
+}
+
+// The beam was computed only for the light.
+void HideLaser(void* ray, void* light)
+{
+    for (int i = 0; i < game::kQuadVertices; ++i) {
+        game::QuadColor(ray, i) = 0;
+    }
+    game::Light_Client_m_isLightDisabled(light) = true;
+    game::Light_Client_m_dataChanged(light) = true;
 }
 
 // Keeps the game's flickering alpha, scaled.
 void StyleRay(void* ray, const LaserStyle& style)
 {
     uint32_t rgb = StyleRgb(style);
-    for (int i = 0; i < kRayVertices; ++i) {
-        uint32_t& color = RayColor(ray, i);
+    for (int i = 0; i < game::kQuadVertices; ++i) {
+        uint32_t& color = game::QuadColor(ray, i);
         if (color == 0) {
             continue;
         }
@@ -116,14 +118,14 @@ void ShiftLight(void* light, const game::Vector3& shift)
     }
 
     game::Vector3 origin = game::Entity_Common_m_origin(light);
-    game::Matrix3 rotation = dk2ml::At<game::Matrix3>(light, game::Entity_Common_m_left.Offset());
+    game::Matrix3 rotation = game::Rotation(light);
     origin.x += shift.x;
     origin.y += shift.y;
     origin.z += shift.z;
     game::Entity_Common_SetTransform(light, &origin, &rotation, game::Entity_Common_m_scale(light));
 }
 
-// Level and square to the beam; the sign comes from the trooper's own left, as the world's handedness is unknown.
+// Level and square to the beam; the sign from the trooper's m_left (world handedness unknown).
 game::Vector3 RightOfBeam(void* human, const game::Vector3& forward)
 {
     float level = std::sqrt(forward.x * forward.x + forward.z * forward.z);
@@ -139,16 +141,16 @@ game::Vector3 RightOfBeam(void* human, const game::Vector3& forward)
     return side;
 }
 
-bool g_initFaked = false; // Init runs with the faked night
+bool g_initFaked = false;
 
-// Init's own laser conditions besides night: not in the editor, a trooper.
+// Init's laser conditions besides night.
 bool GetsLaser(void* human)
 {
     void* tmpl = game::Entity_Common_m_pTemplate(human);
     return !game::Editing() && tmpl && game::Human_Template_type(tmpl) == game::HUMAN_GOODGUY.Get();
 }
 
-// Night for Init: every trooper gets a (hidden) laser on every map. scratch[0]: the faked flag, or 0.
+// Night for Init, so every trooper gets a laser. scratch[0]: the faked flag, or 0.
 int InitPre(DK2ML_Regs* regs, void*)
 {
     bool* night = game::NightFlag();
@@ -169,7 +171,7 @@ void InitPost(DK2ML_Regs* regs, void*)
     }
 }
 
-// Inside a faked Init: the real (day) flag, so the gear isn't the night one. scratch[0]: the flag, or 0.
+// Inside a faked Init: the real day flag for the gear. scratch[0]: the flag, or 0.
 int SetInventoryPre(DK2ML_Regs* regs, void*)
 {
     bool* night = game::NightFlag();
@@ -188,8 +190,24 @@ void SetInventoryPost(DK2ML_Regs* regs, void*)
     }
 }
 
-// Each view shows only its kind: fake night + NVG to show a visible laser, clear NVG to hide an IR one. The editor and
-// humans without a laser (enemies, the dead) are left alone.
+// The switches, overridden by the engagement behavior while engaging.
+bool Shown(void* human, Kind kind, bool hasGear, bool engaging, const Behaviors& behaviors)
+{
+    if (!hasGear) {
+        return false;
+    }
+    bool wanted = Settings_On(kind) && Units_On(human, kind);
+    if (!engaging || !(IsLight(kind) ? behaviors.onLight : behaviors.onLaser)) {
+        return wanted;
+    }
+    if (!wanted && behaviors.onlyIfOn) {
+        return false;
+    }
+    return behaviors.mode == kBehaviorSteady || Engagement_StrobeOn(human, behaviors.strobeHz);
+}
+
+// Fakes night + NVG to show a visible laser or the light, clears NVG to hide the IR laser. The beam is computed only
+// for a gun with a laser, so a wanted light sets hasLaser for the call.
 int UpdatePre(DK2ML_Regs* regs, void*)
 {
     regs->scratch[0] = reinterpret_cast<uint64_t>(dk2ml::Arg<void*>(regs, 0));
@@ -204,22 +222,26 @@ int UpdatePre(DK2ML_Regs* regs, void*)
     }
 
     bool irView = game::NvgView();
-    bool on = (irView ? g_settings.nvg.on : g_settings.visible.on) && Units_LaserOn(human, irView);
-    uint64_t state = (*night ? kWasNight : 0) | (*nvg ? kWasNvg : 0) | (on ? kOn : 0);
+    const Behaviors& behaviors = Settings_Behaviors(irView);
+    bool engaging = (behaviors.onLaser || behaviors.onLight) && Settings_On(kBehaviors) &&
+                    Units_On(human, kBehaviors) && Engagement_Active(human, behaviors);
+    bool laserOn = Shown(human, MakeKind(false, irView), Guns_HasLaser(human), engaging, behaviors);
+    bool lightOn = Shown(human, kLight, Guns_HasLight(human), engaging, behaviors);
+    bool need = laserOn || lightOn;
+    uint64_t state =
+        (*night ? kWasNight : 0) | (*nvg ? kWasNvg : 0) | (laserOn ? kLaserOn : 0) | (lightOn ? kLightOn : 0);
 
     void* item = game::Human_Client_m_pEquippedItem(human);
-    const bool* own = Guns_LaserOverride(item);
-    if (own && *own != game::EqpFirearm_Template_hasLaser(item)) {
+    if (need && Guns_IsFirearm(human) && !game::EqpFirearm_Template_hasLaser(item)) {
         regs->scratch[1] = reinterpret_cast<uint64_t>(item);
-        state |= game::EqpFirearm_Template_hasLaser(item) ? kHadLaser : 0;
-        game::EqpFirearm_Template_hasLaser(item) = *own;
+        game::EqpFirearm_Template_hasLaser(item) = true;
     }
 
     regs->scratch[3] = reinterpret_cast<uint64_t>(night);
-    if (!on && irView) {
+    if (!need && irView) {
         *nvg = false;
         state |= kRestore;
-    } else if (on && !irView) {
+    } else if (need && !irView) {
         *night = true;
         *nvg = true;
         state |= kRestore | kFaked;
@@ -232,7 +254,7 @@ void UpdatePost(DK2ML_Regs* regs, void*)
 {
     uint64_t state = regs->scratch[2];
     if (void* item = reinterpret_cast<void*>(regs->scratch[1])) {
-        game::EqpFirearm_Template_hasLaser(item) = (state & kHadLaser) != 0;
+        game::EqpFirearm_Template_hasLaser(item) = false;
     }
 
     if (state & kRestore) {
@@ -245,19 +267,47 @@ void UpdatePost(DK2ML_Regs* regs, void*)
     void* human = reinterpret_cast<void*>(regs->scratch[0]);
     void* light = game::Human_Client_m_pLaserLight(human); // null once the trooper died
     void* ray = game::Human_Client_m_pLaserRay(human);
-    if (!(state & kOn) || !light || !ray || !RayShown(ray)) {
+    if (!light || !ray) {
+        Lights_Remove(human);
+        return;
+    }
+    if (!(state & (kLaserOn | kLightOn)) || !RayShown(ray)) {
+        Lights_Hide(human);
         return;
     }
 
-    const LaserStyle& style = (state & kFaked) ? g_settings.visible : g_settings.nvg;
+    bool faked = (state & kFaked) != 0;
+    GunOffset offset = Guns_Offset(human);
+    float side = offset.sideCm / 100.0f;
+    const game::Vector3& forward = game::RenderObject2D_forward(ray);
+    game::Vector3 right = side != 0.0f ? RightOfBeam(human, forward) : game::Vector3{0.0f, 0.0f, 0.0f};
+    game::Vector3 shift{right.x * side, offset.heightCm / 100.0f, right.z * side};
+
+    // Before ShapeRay moves the beam.
+    if (state & kLightOn) {
+        GunOffset at = Guns_LightOffset(human);
+        float lightSide = at.sideCm / 100.0f;
+        float back = at.backCm / 100.0f;
+        game::Vector3 lightRight = lightSide != 0.0f ? RightOfBeam(human, forward) : game::Vector3{0.0f, 0.0f, 0.0f};
+        const game::Vector3& middle = game::RenderObject2D_origin(ray);
+        float hit = dk2ml::At<float>(ray, game::RenderObject2D_size.Offset() + game::Vector2_x.Offset());
+        float behind = hit / 2 + back; // from the beam's middle
+        game::Vector3 from{middle.x - forward.x * behind + lightRight.x * lightSide,
+                           middle.y - forward.y * behind + at.heightCm / 100.0f,
+                           middle.z - forward.z * behind + lightRight.z * lightSide};
+        Lights_Show(human, g_settings.light, from, forward, hit + back);
+    } else {
+        Lights_Hide(human);
+    }
+
+    if (!(state & kLaserOn)) {
+        HideLaser(ray, light);
+        return;
+    }
+
+    const LaserStyle& style = faked ? g_settings.visible : g_settings.nvg;
     StyleRay(ray, style);
     StyleLight(light, style);
-
-    GunOffset offset = Guns_Offset(human);
-    float side = offset.sideCm / 100.0f; // cm to the game's meters
-    game::Vector3 right =
-        side != 0.0f ? RightOfBeam(human, game::RenderObject2D_forward(ray)) : game::Vector3{0.0f, 0.0f, 0.0f};
-    game::Vector3 shift{right.x * side, offset.heightCm / 100.0f, right.z * side};
     ShapeRay(ray, style.thickness, shift, offset.backCm / 100.0f);
     ShiftLight(light, shift);
 }

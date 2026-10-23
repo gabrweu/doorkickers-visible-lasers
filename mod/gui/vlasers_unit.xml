@@ -1,6 +1,7 @@
 <!--
-Per-trooper laser toggles (visible and IR). The plugin moves them into #waypoint_menu and shows the Button for the
-trooper's state; _none when the gun has no laser. A separate file, so waypoints.xml stays other mods'.
+Per-trooper laser toggles (visible and IR, sharing one slot: only the kind in view shows), the light toggle and the
+Behaviors toggle. The plugin moves them into #waypoint_menu and shows the Button for the trooper's state; _none when
+the gun has no laser (or light), or no Behaviors are set. A separate file, so waypoints.xml stays other mods'.
 -->
 <GUIItems>
 	<Item name="#dk2ml_vlasers_unit" hidden="true">
@@ -51,6 +52,56 @@ trooper's state; _none when the gun has no laser. A separate file, so waypoints.
 		</Button>
 		<Button name="#dk2ml_vlasers_unit_ir_none" hidden="true" tooltip="IR laser: this trooper's gun has none">
 			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_unit_ir_none.dds"/>
+		</Button>
+	</Item>
+	<Item name="#dk2ml_vlasers_light" hidden="true">
+		<Button name="#dk2ml_vlasers_light_off" tooltip="Light: off. Click to turn it on for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_off_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_off_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_off_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_light"/>
+			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_light_on" hidden="true" tooltip="Light: on. Click to turn it off for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_on_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_on_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_on_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_light"/>
+			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_light_none" hidden="true" tooltip="Light: this trooper's gun has none">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_light_none.dds"/>
+		</Button>
+	</Item>
+	<Item name="#dk2ml_vlasers_behave" hidden="true">
+		<Button name="#dk2ml_vlasers_behave_off" tooltip="Engagement behavior: off. Click to turn it on for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_off_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_off_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_off_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_behave"/>
+			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_behave_on" hidden="true" tooltip="Engagement behavior: on. Click to turn it off for this trooper">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_on_normal.dds"/>
+			<OnHover>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_on_hover.dds"/>
+			</OnHover>
+			<OnClick>
+				<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_on_hover.dds" scaleX="0.9" scaleY="0.9"/>
+				<Action type="Callback" target="#dk2ml_vlasers_behave"/>
+			</OnClick>
+		</Button>
+		<Button name="#dk2ml_vlasers_behave_none" hidden="true" tooltip="Engagement behavior: none set (check Lasers and Lights settings)">
+			<RenderObject2D texture="data/textures/hud/dk2ml_vlasers_behave_none.dds"/>
 		</Button>
 	</Item>
 </GUIItems>

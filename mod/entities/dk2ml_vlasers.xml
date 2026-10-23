@@ -1,0 +1,21 @@
+<!--
+	The tactical light's sprites. Type Light only for the client light machinery: colorMultiplier 0, kept disabled.
+	The plugin sets their position, size and color every frame.
+-->
+<Entities>
+
+	<!-- the lens glow: a camera-facing flare at the light -->
+	<Entity name="dk2ml_vlasers_glow" type="Light" editorAutoHeight="false" initialHeight="1.5" hideInEditor="true">
+		<PhysicalParams solid="false"/>
+		<RenderObject2D texture="data/textures/fx/light_flare_01.dds" blendMode="add_masked" color="ffffff" sizeX="0.3" sizeY="0.3" disableDepthTest="true" billboard="true"/>
+		<Light type="Point" colorMultiplier="0" radiusMeters="0.05"/>
+	</Entity>
+
+	<!-- the beam cone: its length runs along the entity's left axis, turned around it to face the camera -->
+	<Entity name="dk2ml_vlasers_cone" type="Light" editorAutoHeight="false" initialHeight="1.5" hideInEditor="true">
+		<PhysicalParams solid="false"/>
+		<RenderObject2D texture="data/textures/fx/dk2ml_vlasers_cone.dds" blendMode="add_masked" color="ffffff" sizeX="1" sizeY="1" billboardX="true"/>
+		<Light type="Point" colorMultiplier="0" radiusMeters="0.05"/>
+	</Entity>
+
+</Entities>

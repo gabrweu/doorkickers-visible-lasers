@@ -1,6 +1,6 @@
 # Builds Release into dist\<name>\ (mod\ + native\<name>.dll) and writes the DLL's SHA-256 to dist\<name>.sha256.txt.
 $ErrorActionPreference = 'Stop'
-$root = Split-Path $PSScriptRoot -Parent # the project root, one up from tools\
+$root = Split-Path $PSScriptRoot -Parent
 $name = [regex]::Match((Get-Content (Join-Path $root 'CMakeLists.txt') -Raw), 'project\((\w+)').Groups[1].Value
 
 & (Join-Path $PSScriptRoot 'build.ps1')

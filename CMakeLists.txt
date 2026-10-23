@@ -1,7 +1,7 @@
-# era's Lasers Enhanced, a Door Kickers 2 plugin for the Modloader (dk2ml). The project name names the DLL, the mod
+# era's Lights and Lasers, a Door Kickers 2 plugin for the Modloader (dk2ml). The project name names the DLL, the mod
 # folder tools\install.ps1 and tools\package.ps1 create, and the loader's settings folder (GetConfigDir).
 cmake_minimum_required(VERSION 3.20)
-project(dk2_visible_lasers VERSION 2 LANGUAGES C CXX)
+project(dk2_visible_lasers VERSION 3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,8 +16,10 @@ endif()
 add_library(${PROJECT_NAME} SHARED
     src/Plugin.cpp
     src/game/Game.cpp
+    src/lasers/Engagement.cpp
     src/lasers/Guns.cpp
     src/lasers/Lasers.cpp
+    src/lasers/Lights.cpp
     src/lasers/Units.cpp
     src/ui/MenuButton.cpp
     src/ui/UnitButton.cpp

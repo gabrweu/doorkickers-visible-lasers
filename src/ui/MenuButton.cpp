@@ -18,7 +18,7 @@ void MenuButton_Register(const DK2ML_API* api)
     DK2ML_MenuButton b = {sizeof(b)};
     b.icon = "data/textures/gui/dk2ml_vlasers_normal.dds";
     b.iconHover = "data/textures/gui/dk2ml_vlasers_hover.dds";
-    b.tooltip = "era's Lasers Enhanced settings";
+    b.tooltip = "era's Lights and Lasers settings";
     b.onClick = Clicked;
     dk2ml::gui::AddMenuButton(api, b);
 }

@@ -29,7 +29,7 @@ extern "C" {
 #define DK2ML_INLINE static __inline
 #endif
 
-#define DK2ML_API_VERSION 2
+#define DK2ML_API_VERSION 3
 
 typedef enum DK2ML_Status {
     DK2ML_OK = 0,
@@ -244,8 +244,9 @@ typedef void (*DK2ML_TaskFn)(void* user);
 typedef void (*DK2ML_GuiCallbackFn)(void* item, float cursorX, float cursorY, void* user);
 
 /* --- Esc-menu buttons (API 2) ---
- * AddMenuButton puts a square button into the in-mission Esc menus (single missions and campaigns), in the column above
- * Options that every plugin shares: in load order, then call order; a full column continues to its left. The loader
+ * AddMenuButton puts a square button into the in-mission Esc menus (single missions and campaigns), in the rows of 3
+ * above the menu's own buttons that every plugin shares: in load order, then call order, each row from the left, going
+ * up; up to 45 (more are hidden). The loader
  * makes, places and shows the items, so the plugin ships no GUI XML for it. onClick runs on the main thread,
  * crash-contained; a switched-off plugin's buttons disappear. AddMenuButton returns DK2ML_ERROR (logged) for structSize
  * < this sizeof(DK2ML_MenuButton), a NULL onClick, or neither icon nor label. On an API 1 loader the field is missing:
@@ -254,17 +255,48 @@ typedef struct DK2ML_MenuButton {
     uint32_t structSize;   /* sizeof(DK2ML_MenuButton); bigger is accepted, extra fields ignored */
     const char* tooltip;   /* optional; copied, up to 512 bytes */
     const char* icon;      /* optional: texture path as in GUI XML, e.g. "data/textures/gui/x_normal.dds", from the
-                            * mod's folder like its other files; drawn 72x72. NULL: label instead. Copied. */
+                            * mod's folder like its other files; drawn 64x64. NULL: label instead. Copied. */
     const char* iconHover; /* optional (NULL: icon); copied */
     const char* label;     /* without an icon: a short text, e.g. "CAM"; copied, up to 512 bytes */
     DK2ML_GuiCallbackFn onClick; /* item: the clicked button; Esc stays open */
     void* user;
 } DK2ML_MenuButton;
 
-/* Threading: AddOption, Subscribe, SubscribeGuiEvent, PublishInterface and AddMenuButton only during
+/* --- replay data (API 3) ---
+ * A plugin's own bytes, kept inside the replay file the game writes when a mission ends and handed back when that
+ * replay starts, also after the player saved it under a name. For state the replay can't repeat on its own, e.g. a
+ * switch the player flipped mid-mission: save it with its game time, look it up by game time while replaying.
+ *
+ * The loader appends one block for all plugins after the game's data, where the game stops reading, each plugin's
+ * bytes under its key. save and load run on the main thread, crash-contained; a switched-off plugin's don't run.
+ * AddReplayData returns DK2ML_ERROR (logged) for structSize < this sizeof(DK2ML_ReplayData), a key that isn't 1-63
+ * printable ASCII (no spaces) or is taken, or a NULL save or load. Without the game's replay names in this build, it's
+ * logged once and neither runs. On an API 2 loader the fields are missing: check
+ * api->structSize > offsetof(DK2ML_API, AddReplayData), or declare DK2ML_PLUGIN_MANIFEST(3, ...). */
+typedef struct DK2ML_ReplayWriter DK2ML_ReplayWriter; /* the loader's; valid only during save */
+
+typedef struct DK2ML_ReplayData {
+    uint32_t structSize; /* sizeof(DK2ML_ReplayData); bigger is accepted, extra fields ignored */
+    const char* key;     /* unique, e.g. "author.mod"; copied. Keep it: replays saved with it are read back by it. */
+    /* The game just wrote the mission's replay file: add this mission's data with ReplayWrite(out, ...). Nothing
+     * written: nothing stored. The bytes are the plugin's own format; give them a version. */
+    void (*save)(DK2ML_ReplayWriter* out, void* user);
+    /* A replay starts (also when it's restarted or skipped through): this key's bytes from its file, or NULL and 0
+     * if it has none (an older replay, or the plugin wasn't running): go back to the defaults then. Keep this apart
+     * from what the mission records: watching right after a mission, save runs during the start and load then gets
+     * those bytes. It can run more than once per start, its order with MAP_LOADED isn't fixed, and IsReplaying may
+     * not be set yet. The bytes may come from another player's file: check every count and size. data lives only
+     * for the call. */
+    void (*load)(const void* data, size_t size, void* user);
+    void* user;
+} DK2ML_ReplayData;
+
+#define DK2ML_REPLAY_MAX_DATA (1u << 20) /* bytes per key */
+
+/* Threading: AddOption, Subscribe, SubscribeGuiEvent, PublishInterface, AddMenuButton and AddReplayData only during
  * DK2ML_PluginInit. Create hooks there too; CreateSafeHook also works later, from any thread. EnableHook/DisableHook,
  * Log, the PDB lookups (ResolveSymbol, GetFieldOffset, GetTypeSize, GetEnumValue), GetInterface and AddTask: any
- * thread, any time. GUI kit: main thread only. */
+ * thread, any time. GUI kit, ReplayWrite and IsReplaying: main thread only. */
 typedef struct DK2ML_API {
     uint32_t apiVersion; /* the loader's DK2ML_API_VERSION */
     uint32_t structSize; /* sizeof(DK2ML_API) of the loader */
@@ -385,6 +417,20 @@ typedef struct DK2ML_API {
 
     /* Adds a button to the Esc menus (see "Esc-menu buttons"). Init only; later: DK2ML_ERROR. */
     DK2ML_Status (*AddMenuButton)(const DK2ML_MenuButton* button);
+
+    /* --- API 3 --- */
+
+    /* Keeps data in replay files (see "replay data"). Init only; later: DK2ML_ERROR. */
+    DK2ML_Status (*AddReplayData)(const DK2ML_ReplayData* data);
+
+    /* Appends size bytes to the save callback's data; several calls add up. Only inside save, with its out.
+     * DK2ML_ERROR (logged) otherwise, for NULL data with size > 0, or past DK2ML_REPLAY_MAX_DATA: then nothing of this
+     * save is stored. */
+    DK2ML_Status (*ReplayWrite)(DK2ML_ReplayWriter* out, const void* data, size_t size);
+
+    /* Non-zero while the GameClient plays a replay (GameClient::CGAMEFLAG_REPLAYING); 0 without a GameClient or if this
+     * build lacks the names. */
+    int (*IsReplaying)(void);
 } DK2ML_API;
 
 typedef struct DK2ML_PluginInfo {
