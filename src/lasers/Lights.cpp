@@ -1,5 +1,6 @@
 // Tactical lights: a stock "Light Spot" per trooper plus the mod's glow and cone sprites (mod/entities/dk2ml_vlasers.xml),
-// made on first use and placed every frame from the laser beam (Lasers.cpp). Client-side: the AI doesn't see them.
+// made on first use and placed every frame from the laser beam (Lasers.cpp), with a hand sway and a brightness flicker
+// on top. Client-side: the AI doesn't see them.
 #include <algorithm>
 #include <cmath>
 #include <iterator>
@@ -22,6 +23,17 @@ constexpr float kGlowFadeDeg = 20.0f; // past glowAngleDeg
 constexpr float kConeAlpha = 128.0f; // at coneStrength 1
 constexpr float kMinConeM = 0.1f;
 constexpr float kConeOverscan = 1.3f; // the texture's soft edge past the cone width ($overscan, make_fx_texture.ps1)
+// Hand sway (at sway 1) and flicker (at flicker 1), on game time: still while paused, slowed by slow-mo, replayed alike.
+constexpr float kSwayIdleDeg = 0.5f; // standing
+constexpr float kSwayMoveDeg = 1.5f; // added at kRunSpeedMps
+constexpr double kSwayHz = 0.3;
+constexpr float kBobDeg = 0.6f; // the steps' bob at kRunSpeedMps
+constexpr double kBobHz = 1.8;
+constexpr float kRunSpeedMps = 3.5f;
+constexpr float kSpeedSmoothS = 0.3f;
+constexpr int kMaxStepMs = 500; // a longer gap (a replay jump) isn't movement
+constexpr float kFlickerAmount = 0.05f;
+constexpr double kFlickerHz = 3.0;
 
 // The game can delete local lights itself (TryFreeingUpSomeEntities), so the id is checked against the entity pool.
 struct Piece {
@@ -32,6 +44,10 @@ struct Piece {
 struct Tracked {
     Piece parts[kPartCount];
     bool shown;
+    bool seeded; // lastMs and lastOrigin are set
+    int lastMs; // game time
+    game::Vector3 lastOrigin;
+    float speed; // m/s, smoothed
 };
 
 std::unordered_map<void*, Tracked> g_lights; // by Human_Client
@@ -161,6 +177,67 @@ game::Vector3 Tilted(const game::Vector3& forward)
     return {forward.x * across, std::sin(pitch), forward.z * across};
 }
 
+// About -1..1, smooth, with no repeat in sight. phase in cycles; different phases don't move together.
+float Wobble(double t, double phase)
+{
+    constexpr double kTau = 2.0 * 3.14159265358979;
+    double sum = std::sin(kTau * (t + phase)) + 0.5 * std::sin(kTau * (2.3 * t + 2.17 * phase + 0.31)) +
+                 0.25 * std::sin(kTau * (4.1 * t + 3.41 * phase + 0.73));
+    return static_cast<float>(sum / 1.75);
+}
+
+// Per trooper, from its id, so troopers don't move in step and a replay moves the same.
+double Phase(void* human, double offset)
+{
+    double phase = game::Entity_Common_m_id(human) * 0.6180339887 + offset;
+    return phase - std::floor(phase);
+}
+
+// From the trooper's moves in game time; a pause or a jump leaves it alone.
+void UpdateSpeed(Tracked& tracked, void* human, int nowMs)
+{
+    const game::Vector3& origin = game::Entity_Common_m_origin(human);
+    int stepMs = nowMs - tracked.lastMs;
+    if (tracked.seeded && stepMs == 0) {
+        return;
+    }
+    if (tracked.seeded && stepMs > 0 && stepMs < kMaxStepMs) {
+        float dx = origin.x - tracked.lastOrigin.x;
+        float dz = origin.z - tracked.lastOrigin.z;
+        float seconds = static_cast<float>(stepMs) / 1000.0f;
+        float speed = std::sqrt(dx * dx + dz * dz) / seconds;
+        tracked.speed += (speed - tracked.speed) * (1.0f - std::exp(-seconds / kSpeedSmoothS));
+    }
+    tracked.seeded = true;
+    tracked.lastMs = nowMs;
+    tracked.lastOrigin = origin;
+}
+
+// Turned by a slow wander, larger while moving, plus the steps' bob: yaw around up, then pitch as Tilted does.
+game::Vector3 Swayed(const game::Vector3& forward, void* human, float speed, float sway, double t)
+{
+    float level = std::sqrt(forward.x * forward.x + forward.z * forward.z);
+    if (sway <= 0.0f || level < 1e-4f) {
+        return forward;
+    }
+
+    float move = std::clamp(speed / kRunSpeedMps, 0.0f, 1.0f);
+    float wander = kSwayIdleDeg + kSwayMoveDeg * move;
+    double step = kBobHz * t + Phase(human, 0.83);
+    float bob = kBobDeg * move;
+    float yawDeg = sway * (wander * Wobble(kSwayHz * t, Phase(human, 0.0)) +
+                           0.4f * bob * static_cast<float>(std::sin(kPi * step))); // a sway per stride
+    float pitchDeg = sway * (wander * Wobble(kSwayHz * t, Phase(human, 0.29)) +
+                             bob * static_cast<float>(std::sin(2.0 * kPi * step)));
+
+    float yaw = yawDeg * kPi / 180.0f;
+    float x = forward.x * std::cos(yaw) + forward.z * std::sin(yaw);
+    float z = forward.z * std::cos(yaw) - forward.x * std::sin(yaw);
+    float pitch = std::atan2(forward.y, level) + pitchDeg * kPi / 180.0f;
+    float across = std::cos(pitch) / level;
+    return {x * across, std::sin(pitch), z * across};
+}
+
 // The spot shines along m_forward; UpdateLightParams needs the three axes square to each other.
 game::Matrix3 Facing(const game::Vector3& forward)
 {
@@ -183,7 +260,7 @@ game::Matrix3 Along(const game::Vector3& direction)
     return game::FromAxes(left, Cross(forward, left), forward);
 }
 
-void WriteParams(void* light, const LightStyle& style, bool shown)
+void WriteParams(void* light, const LightStyle& style, bool shown, float level)
 {
     uint32_t rgb = StyleRgb(style);
     float color[3] = {static_cast<float>(rgb & 0xFF) / 255.0f, static_cast<float>((rgb >> 8) & 0xFF) / 255.0f,
@@ -198,18 +275,18 @@ void WriteParams(void* light, const LightStyle& style, bool shown)
         for (int i = 0; i < kLightColorFloats; ++i) {
             colors[i] = color[i % 3];
         }
-        dk2ml::At<float>(light, base + game::sLightParams_colorMultiplier.Offset()) = style.brightness;
+        dk2ml::At<float>(light, base + game::sLightParams_colorMultiplier.Offset()) = style.brightness * level;
         dk2ml::At<float>(light, base + game::sLightParams_radiusMeters.Offset()) = style.rangeM;
         dk2ml::At<float>(light, base + game::sLightParams_spotAngleDegrees.Offset()) = style.widthDeg / 2.0f;
         dk2ml::At<int>(light, base + game::sLightParams_limitType.Offset()) = limit;
     }
 }
 
-void ShowSpot(void* light, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim)
+void ShowSpot(void* light, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim, float level)
 {
     game::Matrix3 rotation = Facing(aim);
     game::Entity_Common_SetTransform(light, &from, &rotation, game::Entity_Common_m_scale(light));
-    WriteParams(light, style, true);
+    WriteParams(light, style, true, level);
     game::Light_Client_m_isLightDisabled(light) = false;
     game::Light_Client_m_dataChanged(light) = true;
 }
@@ -235,9 +312,9 @@ float GlowSeen(const LightStyle& style, const game::Vector3& from, const game::V
 }
 
 // Billboarded. Fades both alpha and color, whichever the blend uses.
-void ShowGlow(void* glow, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim)
+void ShowGlow(void* glow, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim, float level)
 {
-    float seen = GlowSeen(style, from, aim);
+    float seen = std::min(GlowSeen(style, from, aim) * level, 1.0f);
     if (seen <= 0.0f) {
         HidePart(kGlow, glow);
         return;
@@ -257,7 +334,8 @@ void ShowGlow(void* glow, const LightStyle& style, const game::Vector3& from, co
 
 // The texture's apex is at u = 0, so the sprite's middle sits half its length out. The far end is kConeOverscan times
 // the cone width: the texture's soft edge reaches past it.
-void ShowCone(void* cone, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim, float reachM)
+void ShowCone(void* cone, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim, float reachM,
+              float level)
 {
     float length = std::min(style.coneLengthM, reachM);
     if (length < kMinConeM) {
@@ -272,7 +350,7 @@ void ShowCone(void* cone, const LightStyle& style, const game::Vector3& from, co
     game::Entity_Common_SetTransform(cone, &middle, &rotation, game::Entity_Common_m_scale(cone));
     float width = kConeOverscan * 2.0f * length * std::tan(style.widthDeg / 2.0f * kPi / 180.0f);
     SetSpriteSize(cone, length, width);
-    uint32_t alpha = static_cast<uint32_t>(std::clamp(kConeAlpha * style.coneStrength, 1.0f, 255.0f));
+    uint32_t alpha = static_cast<uint32_t>(std::clamp(kConeAlpha * style.coneStrength * level, 1.0f, 255.0f));
     SetSpriteColor(cone, (alpha << 24) | StyleRgb(style));
 }
 
@@ -299,20 +377,26 @@ void Lights_Show(void* human, const LightStyle& style, const game::Vector3& from
     }
 
     Tracked& tracked = g_lights[human];
-    game::Vector3 aim = Tilted(forward);
+    void* client = *game::g_pGameClient;
+    int nowMs = client ? game::GameCommon_m_gameTime(client) : 0;
+    UpdateSpeed(tracked, human, nowMs);
+    double t = nowMs / 1000.0;
+    game::Vector3 aim = Tilted(Swayed(forward, human, tracked.speed, style.sway, t));
+    float level = 1.0f + style.flicker * kFlickerAmount * Wobble(kFlickerHz * t, Phase(human, 0.61));
+
     if (void* spot = Get(tracked, kSpot, true)) {
-        ShowSpot(spot, style, from, aim);
+        ShowSpot(spot, style, from, aim, level);
     }
     if (void* glow = Get(tracked, kGlow, style.glow)) {
         if (style.glow) {
-            ShowGlow(glow, style, from, aim);
+            ShowGlow(glow, style, from, aim, level);
         } else {
             HidePart(kGlow, glow);
         }
     }
     if (void* cone = Get(tracked, kCone, style.cone)) {
         if (style.cone) {
-            ShowCone(cone, style, from, aim, reachM);
+            ShowCone(cone, style, from, aim, reachM, level);
         } else {
             HidePart(kCone, cone);
         }

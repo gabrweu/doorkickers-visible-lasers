@@ -274,6 +274,10 @@ bool DrawLightStyle(const char* title, const char* id, Kind kind, LightStyle& st
     changed |= Slider(label, &style.rangeM, kLightRange, "%.1f m");
     sprintf_s(label, "Beam width##%s", id);
     changed |= Slider(label, &style.widthDeg, kWidthRange, "%.0f deg");
+    sprintf_s(label, "Hand sway##%s", id);
+    changed |= Slider(label, &style.sway, kSwayRange, "%.1fx");
+    sprintf_s(label, "Flicker##%s", id);
+    changed |= Slider(label, &style.flicker, kFlickerRange, "%.1fx");
 
     imgui::Spacing();
     sprintf_s(label, "Lens glow##%s", id);

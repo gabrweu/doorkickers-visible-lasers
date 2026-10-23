@@ -37,6 +37,8 @@ struct LightStyle {
     float brightness = 2.0f; // colorMultiplier
     float rangeM = 10.0f;
     float widthDeg = 50.0f; // full cone angle
+    float sway = 1.0f;      // hand sway multiplier, 0 = steady
+    float flicker = 1.0f;   // brightness variation multiplier, 0 = constant
     bool glow = true;
     float glowSize = 0.4f;
     float glowAngleDeg = 65.0f; // max camera angle off the beam; 180: no limit
@@ -60,6 +62,8 @@ constexpr Range kSideRange{-10.0f, 10.0f}; // cm, right positive
 constexpr Range kBrightnessRange{0.25f, 8.0f};
 constexpr Range kLightRange{2.0f, 25.0f};   // m
 constexpr Range kWidthRange{10.0f, 120.0f}; // degrees
+constexpr Range kSwayRange{0.0f, 3.0f};
+constexpr Range kFlickerRange{0.0f, 3.0f};
 constexpr Range kGlowSizeRange{0.25f, 4.0f};
 constexpr Range kGlowAngleRange{20.0f, 180.0f}; // degrees
 constexpr Range kConeLengthRange{0.5f, 10.0f}; // m

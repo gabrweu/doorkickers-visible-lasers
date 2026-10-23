@@ -116,6 +116,8 @@ void LoadLightStyle(const std::wstring& prefix, LightStyle& style)
     style.brightness = ReadFloat((prefix + L"Brightness").c_str(), style.brightness, kBrightnessRange);
     style.rangeM = ReadFloat((prefix + L"Range").c_str(), style.rangeM, kLightRange);
     style.widthDeg = ReadFloat((prefix + L"Width").c_str(), style.widthDeg, kWidthRange);
+    style.sway = ReadFloat((prefix + L"Sway").c_str(), style.sway, kSwayRange);
+    style.flicker = ReadFloat((prefix + L"Flicker").c_str(), style.flicker, kFlickerRange);
     style.glow = ReadInt((prefix + L"Glow").c_str(), style.glow) != 0;
     style.glowSize = ReadFloat((prefix + L"GlowSize").c_str(), style.glowSize, kGlowSizeRange);
     style.glowAngleDeg = ReadFloat((prefix + L"GlowAngle").c_str(), style.glowAngleDeg, kGlowAngleRange);
@@ -133,6 +135,8 @@ void SaveLightStyle(SectionWriter& out, const std::wstring& prefix, const LightS
     out.Float(prefix + L"Brightness", style.brightness);
     out.Float(prefix + L"Range", style.rangeM);
     out.Float(prefix + L"Width", style.widthDeg);
+    out.Float(prefix + L"Sway", style.sway);
+    out.Float(prefix + L"Flicker", style.flicker);
     out.Int(prefix + L"Glow", style.glow);
     out.Float(prefix + L"GlowSize", style.glowSize);
     out.Float(prefix + L"GlowAngle", style.glowAngleDeg);
@@ -272,6 +276,11 @@ void AddLightStyleOptions(const char* header, LightStyle& style)
               "%.1f m");
     AddOption(DK2ML_OPTION_FLOAT, "Beam width", "The light cone's full width", &style.widthDeg, kWidthRange.min,
               kWidthRange.max, "%.0f deg");
+    AddOption(DK2ML_OPTION_FLOAT, "Hand sway",
+              "The beam wanders a little around the aim, more while moving; 0 = steady", &style.sway, kSwayRange.min,
+              kSwayRange.max, "%.1fx");
+    AddOption(DK2ML_OPTION_FLOAT, "Flicker", "A subtle variation in brightness; 0 = constant", &style.flicker,
+              kFlickerRange.min, kFlickerRange.max, "%.1fx");
     AddOption(DK2ML_OPTION_BOOL, "Lens glow", "A glow at the light, so a trooper with the light on stands out",
               &style.glow);
     AddOption(DK2ML_OPTION_FLOAT, "Glow size", "The lens glow's size", &style.glowSize, kGlowSizeRange.min,
