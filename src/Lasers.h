@@ -104,8 +104,8 @@ struct Settings {
     float lightBackCm = 4.0f;
     float lightSideCm = 3.5f;
     LightStyle light;
-    Behaviors visibleBehaviors; // without night vision
-    Behaviors nvgBehaviors;     // with night vision
+    Behaviors visibleBehaviors{false, true, kBehaviorStrobe, false, true, 0.15f, 1.0f, 5.0f}; // without night vision
+    Behaviors nvgBehaviors{true, false, kBehaviorSteady, false, true, 0.15f, 0.75f};          // with night vision
     bool behaviorsAtStart = false;
     bool behaviorsOn = true;       // per mission, not saved
 };
