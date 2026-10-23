@@ -21,6 +21,7 @@ constexpr float kGlowSizeM = 0.3f; // at glowSize 1
 constexpr float kGlowFadeDeg = 20.0f; // past glowAngleDeg
 constexpr float kConeAlpha = 128.0f; // at coneStrength 1
 constexpr float kMinConeM = 0.1f;
+constexpr float kConeOverscan = 1.3f; // the texture's soft edge past the cone width ($overscan, make_fx_texture.ps1)
 
 // The game can delete local lights itself (TryFreeingUpSomeEntities), so the id is checked against the entity pool.
 struct Piece {
@@ -254,7 +255,8 @@ void ShowGlow(void* glow, const LightStyle& style, const game::Vector3& from, co
     SetSpriteColor(glow, color);
 }
 
-// The texture's apex is at u = 0, so the sprite's middle sits half its length out. The far end matches the cone width.
+// The texture's apex is at u = 0, so the sprite's middle sits half its length out. The far end is kConeOverscan times
+// the cone width: the texture's soft edge reaches past it.
 void ShowCone(void* cone, const LightStyle& style, const game::Vector3& from, const game::Vector3& aim, float reachM)
 {
     float length = std::min(style.coneLengthM, reachM);
@@ -268,7 +270,7 @@ void ShowCone(void* cone, const LightStyle& style, const game::Vector3& from, co
                          from.z + direction.z * length / 2};
     game::Matrix3 rotation = Along(direction);
     game::Entity_Common_SetTransform(cone, &middle, &rotation, game::Entity_Common_m_scale(cone));
-    float width = 2.0f * length * std::tan(style.widthDeg / 2.0f * kPi / 180.0f);
+    float width = kConeOverscan * 2.0f * length * std::tan(style.widthDeg / 2.0f * kPi / 180.0f);
     SetSpriteSize(cone, length, width);
     uint32_t alpha = static_cast<uint32_t>(std::clamp(kConeAlpha * style.coneStrength, 1.0f, 255.0f));
     SetSpriteColor(cone, (alpha << 24) | StyleRgb(style));

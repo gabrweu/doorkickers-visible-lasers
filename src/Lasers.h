@@ -41,8 +41,8 @@ struct LightStyle {
     float glowSize = 0.4f;
     float glowAngleDeg = 65.0f; // max camera angle off the beam; 180: no limit
     bool cone = true;
-    float coneLengthM = 3.0f;
-    float coneStrength = 1.0f;
+    float coneLengthM = 1.5f;
+    float coneStrength = 0.6f;
     bool on = true; // per mission, not saved
 };
 
